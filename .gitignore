@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+
+# Runtime/cache outputs
+cache_*.jsonl
+debug/
+*.wip.epub
+*.partial.epub
+*.bak-*.epub
+
+# Local app/session settings
+.last_session.json
+.gui_settings.json
+
+# Potential secrets
+AIza*
+*.key
+*.secret
