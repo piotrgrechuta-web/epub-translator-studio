@@ -3,23 +3,38 @@
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-
-GOOGLE_API_KEY_ENV = "GOOGLE_API_KEY"
-OLLAMA_HOST_DEFAULT = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
-SUPPORTED_TEXT_LANGS = {"en", "pl", "de", "fr", "es", "pt"}
+from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parents[1]
+TKINTER_DIR = REPO_ROOT / "project-tkinter"
+if str(TKINTER_DIR) not in sys.path:
+    sys.path.insert(0, str(TKINTER_DIR))
+
+from runtime_core import (  # noqa: E402
+    DEFAULT_SUPPORTED_TEXT_LANGS,
+    GOOGLE_API_KEY_ENV,
+    OLLAMA_HOST_DEFAULT,
+    RunOptions,
+    build_run_command,
+    build_validation_command,
+    list_google_models,
+    list_ollama_models,
+    validate_run_options,
+)
+
+SUPPORTED_TEXT_LANGS = set(DEFAULT_SUPPORTED_TEXT_LANGS)
 ENGINE_DIR = BASE_DIR / "engine"
-TRANSLATOR = ENGINE_DIR / "tlumacz_ollama.py"
+CANONICAL_TRANSLATOR = TKINTER_DIR / "tlumacz_ollama.py"
+TRANSLATOR = CANONICAL_TRANSLATOR if CANONICAL_TRANSLATOR.exists() else (ENGINE_DIR / "tlumacz_ollama.py")
 STATE_FILE = BASE_DIR / "ui_state.json"
 DEFAULT_DB = BASE_DIR / "translator_studio.db"
 
@@ -170,8 +185,10 @@ RUNNER = RunManager()
 def _load_state() -> UiState:
     if not STATE_FILE.exists():
         d = UiState()
-        if (ENGINE_DIR / "prompt.txt").exists():
-            d.prompt = str(ENGINE_DIR / "prompt.txt")
+        for p in [TKINTER_DIR / "prompt.txt", ENGINE_DIR / "prompt.txt"]:
+            if p.exists():
+                d.prompt = str(p)
+                break
         return d
     try:
         raw = json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -192,77 +209,49 @@ def _translator_prefix() -> List[str]:
     return ["python", "-u", str(TRANSLATOR)]
 
 
-def _validate_state(s: UiState) -> None:
-    if s.provider not in {"ollama", "google"}:
-        raise ValueError("provider must be 'ollama' or 'google'")
-    if not s.input_epub.strip():
-        raise ValueError("input_epub is required")
-    if not Path(s.input_epub).exists():
-        raise ValueError(f"input_epub does not exist: {s.input_epub}")
-    if not s.output_epub.strip():
-        raise ValueError("output_epub is required")
-    if not s.prompt.strip() or not Path(s.prompt).exists():
-        raise ValueError("prompt file is required and must exist")
-    if not s.model.strip():
-        raise ValueError("model is required")
-    if s.source_lang not in SUPPORTED_TEXT_LANGS:
-        raise ValueError("invalid source_lang")
-    if s.target_lang not in SUPPORTED_TEXT_LANGS:
-        raise ValueError("invalid target_lang")
+def _to_run_options(s: UiState) -> RunOptions:
+    return RunOptions(
+        provider=s.provider,
+        input_epub=s.input_epub.strip(),
+        output_epub=s.output_epub.strip(),
+        prompt=s.prompt.strip(),
+        model=s.model.strip(),
+        batch_max_segs=s.batch_max_segs.strip(),
+        batch_max_chars=s.batch_max_chars.strip(),
+        sleep=s.sleep.strip(),
+        timeout=s.timeout.strip(),
+        attempts=s.attempts.strip(),
+        backoff=s.backoff.strip(),
+        temperature=s.temperature.strip(),
+        num_ctx=s.num_ctx.strip(),
+        num_predict=s.num_predict.strip(),
+        tags=s.tags.strip(),
+        checkpoint=s.checkpoint.strip(),
+        debug_dir=s.debug_dir.strip() or "debug",
+        source_lang=s.source_lang.strip().lower(),
+        target_lang=s.target_lang.strip().lower(),
+        ollama_host=s.ollama_host.strip() or OLLAMA_HOST_DEFAULT,
+        cache=s.cache.strip(),
+        use_cache=s.use_cache,
+        glossary=s.glossary.strip(),
+        use_glossary=s.use_glossary,
+        tm_db=s.tm_db.strip() or str(DEFAULT_DB),
+        tm_project_id=s.tm_project_id,
+    )
+
+
+def _validate_state(s: UiState, google_api_key: str = "") -> None:
+    err = validate_run_options(
+        _to_run_options(s),
+        google_api_key=google_api_key,
+        supported_text_langs=SUPPORTED_TEXT_LANGS,
+    )
+    if err:
+        raise ValueError(err)
 
 
 def _build_run_cmd(s: UiState) -> List[str]:
-    cmd = _translator_prefix() + [
-        s.input_epub.strip(),
-        s.output_epub.strip(),
-        "--prompt",
-        s.prompt.strip(),
-        "--provider",
-        s.provider,
-        "--model",
-        s.model.strip(),
-        "--batch-max-segs",
-        s.batch_max_segs.strip(),
-        "--batch-max-chars",
-        s.batch_max_chars.strip(),
-        "--sleep",
-        s.sleep.strip().replace(",", "."),
-        "--timeout",
-        s.timeout.strip(),
-        "--attempts",
-        s.attempts.strip(),
-        "--backoff",
-        s.backoff.strip(),
-        "--temperature",
-        s.temperature.strip().replace(",", "."),
-        "--num-ctx",
-        s.num_ctx.strip(),
-        "--num-predict",
-        s.num_predict.strip(),
-        "--tags",
-        s.tags.strip(),
-        "--checkpoint-every-files",
-        s.checkpoint.strip(),
-        "--debug-dir",
-        s.debug_dir.strip() or "debug",
-        "--source-lang",
-        s.source_lang.strip().lower(),
-        "--target-lang",
-        s.target_lang.strip().lower(),
-    ]
-    if s.provider == "ollama":
-        cmd += ["--host", (s.ollama_host.strip() or OLLAMA_HOST_DEFAULT)]
-    if s.use_cache and s.cache.strip():
-        cmd += ["--cache", s.cache.strip()]
-    if s.use_glossary and s.glossary.strip():
-        cmd += ["--glossary", s.glossary.strip()]
-    else:
-        cmd += ["--no-glossary"]
-    cmd += ["--tm-db", s.tm_db.strip() or str(DEFAULT_DB)]
-    if s.tm_project_id is not None:
-        cmd += ["--tm-project-id", str(int(s.tm_project_id))]
-    cmd += ["--tm-fuzzy-threshold", "0.92"]
-    return cmd
+    return build_run_command(_translator_prefix(), _to_run_options(s), tm_fuzzy_threshold="0.92")
 
 
 @app.get("/health")
@@ -283,15 +272,17 @@ def set_config(state: UiState) -> Dict[str, Any]:
 
 @app.post("/run/start")
 def run_start(req: RunRequest) -> Dict[str, Any]:
+    key = ""
+    if req.state.provider == "google":
+        key = req.state.google_api_key.strip() or os.environ.get(GOOGLE_API_KEY_ENV, "").strip()
     try:
-        _validate_state(req.state)
+        _validate_state(req.state, google_api_key=key)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     _save_state(req.state)
     cmd = _build_run_cmd(req.state)
     env = {**os.environ}
     if req.state.provider == "google":
-        key = req.state.google_api_key.strip() or os.environ.get(GOOGLE_API_KEY_ENV, "").strip()
         if not key:
             raise HTTPException(status_code=400, detail="Google API key is missing")
         env[GOOGLE_API_KEY_ENV] = key
@@ -307,7 +298,7 @@ def run_validate(req: ValidateRequest) -> Dict[str, Any]:
     p = Path(req.epub_path.strip()) if req.epub_path.strip() else None
     if p is None or not p.exists():
         raise HTTPException(status_code=400, detail="epub_path must exist")
-    cmd = _translator_prefix() + ["--validate-epub", str(p), "--tags", req.tags.strip()]
+    cmd = build_validation_command(_translator_prefix(), str(p), req.tags.strip())
     try:
         RUNNER.start(cmd, env={**os.environ}, mode="validate")
     except Exception as e:
@@ -327,33 +318,12 @@ def run_stop() -> Dict[str, Any]:
 
 @app.get("/models/ollama")
 def models_ollama(host: str = OLLAMA_HOST_DEFAULT) -> Dict[str, Any]:
-    url = host.rstrip("/") + "/api/tags"
-    r = requests.get(url, timeout=20)
-    r.raise_for_status()
-    data = r.json()
-    out: List[str] = []
-    for m in data.get("models", []) or []:
-        name = m.get("name")
-        if isinstance(name, str) and name.strip():
-            out.append(name.strip())
-    return {"models": sorted(set(out))}
+    return {"models": list_ollama_models(host=host, timeout_s=20)}
 
 
 @app.get("/models/google")
 def models_google(api_key: str) -> Dict[str, Any]:
-    key = (api_key or "").strip()
-    if not key:
-        raise HTTPException(status_code=400, detail="api_key is required")
-    url = "https://generativelanguage.googleapis.com/v1beta/models"
-    headers = {"x-goog-api-key": key}
-    r = requests.get(url, headers=headers, timeout=20)
-    r.raise_for_status()
-    data = r.json()
-    out: List[str] = []
-    for m in data.get("models", []) or []:
-        name = m.get("name")
-        methods = m.get("supportedGenerationMethods") or []
-        ok = isinstance(name, str) and isinstance(methods, list) and any(str(x).lower() == "generatecontent" for x in methods)
-        if ok:
-            out.append(name.strip())
-    return {"models": sorted(set(out))}
+    try:
+        return {"models": list_google_models(api_key=api_key, timeout_s=20)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

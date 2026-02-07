@@ -19,7 +19,6 @@ import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import requests
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
@@ -40,6 +39,13 @@ from epub_enhancer import (
 )
 from studio_suite import StudioSuiteWindow
 from app_events import flush_event_log, log_event_jsonl
+from runtime_core import (
+    RunOptions as CoreRunOptions,
+    build_run_command as core_build_run_command,
+    build_validation_command as core_build_validation_command,
+    list_google_models as core_list_google_models,
+    list_ollama_models as core_list_ollama_models,
+)
 
 APP_TITLE = "EPUB Translator Studio"
 SETTINGS_FILE = Path(__file__).resolve().with_name(".gui_settings.json")
@@ -54,35 +60,11 @@ LOG = logging.getLogger(__name__)
 
 
 def list_ollama_models(host: str, timeout_s: int = 20) -> List[str]:
-    url = host.rstrip("/") + "/api/tags"
-    r = requests.get(url, timeout=timeout_s)
-    r.raise_for_status()
-    data = r.json()
-    out: List[str] = []
-    for m in data.get("models", []) or []:
-        name = m.get("name")
-        if isinstance(name, str) and name.strip():
-            out.append(name.strip())
-    return sorted(set(out))
+    return core_list_ollama_models(host=host, timeout_s=timeout_s)
 
 
 def list_google_models(api_key: str, timeout_s: int = 20) -> List[str]:
-    url = "https://generativelanguage.googleapis.com/v1beta/models"
-    headers = {"x-goog-api-key": api_key.strip()}
-    r = requests.get(url, headers=headers, timeout=timeout_s)
-    r.raise_for_status()
-    data = r.json()
-
-    out: List[str] = []
-    for m in data.get("models", []) or []:
-        name = m.get("name")
-        if not isinstance(name, str) or not name.strip():
-            continue
-        methods = m.get("supportedGenerationMethods") or []
-        ok = isinstance(methods, list) and any(str(x).lower() == "generatecontent" for x in methods)
-        if ok:
-            out.append(name.strip())
-    return sorted(set(out))
+    return core_list_google_models(api_key=api_key, timeout_s=timeout_s)
 
 
 def quote_arg(arg: str) -> str:
@@ -1713,73 +1695,38 @@ class TranslatorGUI:
         return os.environ.get(GOOGLE_API_KEY_ENV, "").strip()
 
     def _build_command(self) -> List[str]:
-        provider = self.provider_var.get().strip()
-
-        cmd = self._translator_cmd_prefix() + [
-            self.input_epub_var.get().strip(),
-            self.output_epub_var.get().strip(),
-            "--prompt",
-            self.prompt_var.get().strip(),
-            "--provider",
-            provider,
-            "--model",
-            self.model_var.get().strip(),
-            "--batch-max-segs",
-            self.batch_max_segs_var.get().strip(),
-            "--batch-max-chars",
-            self.batch_max_chars_var.get().strip(),
-            "--sleep",
-            self.sleep_var.get().strip().replace(",", "."),
-            "--timeout",
-            self.timeout_var.get().strip(),
-            "--attempts",
-            self.attempts_var.get().strip(),
-            "--backoff",
-            self.backoff_var.get().strip(),
-            "--temperature",
-            self.temperature_var.get().strip().replace(",", "."),
-            "--num-ctx",
-            self.num_ctx_var.get().strip(),
-            "--num-predict",
-            self.num_predict_var.get().strip(),
-            "--tags",
-            self.tags_var.get().strip(),
-            "--checkpoint-every-files",
-            self.checkpoint_var.get().strip(),
-            "--debug-dir",
-            self.debug_dir_var.get().strip(),
-            "--source-lang",
-            self.source_lang_var.get().strip().lower(),
-            "--target-lang",
-            self.target_lang_var.get().strip().lower(),
-        ]
-
-        if provider == "ollama":
-            cmd += ["--host", self.ollama_host_var.get().strip() or OLLAMA_HOST_DEFAULT]
-
-        if self.use_cache_var.get() and self.cache_var.get().strip():
-            cmd += ["--cache", self.cache_var.get().strip()]
-
-        gloss = self.glossary_var.get().strip()
-        if self.use_glossary_var.get() and gloss:
-            cmd += ["--glossary", gloss]
-        else:
-            cmd += ["--no-glossary"]
-
-        cmd += ["--tm-db", str(SQLITE_FILE)]
-        if self.current_project_id is not None:
-            cmd += ["--tm-project-id", str(self.current_project_id)]
-        cmd += ["--tm-fuzzy-threshold", "0.92"]
-
-        return cmd
+        opts = CoreRunOptions(
+            provider=self.provider_var.get().strip(),
+            input_epub=self.input_epub_var.get().strip(),
+            output_epub=self.output_epub_var.get().strip(),
+            prompt=self.prompt_var.get().strip(),
+            model=self.model_var.get().strip(),
+            batch_max_segs=self.batch_max_segs_var.get().strip(),
+            batch_max_chars=self.batch_max_chars_var.get().strip(),
+            sleep=self.sleep_var.get().strip(),
+            timeout=self.timeout_var.get().strip(),
+            attempts=self.attempts_var.get().strip(),
+            backoff=self.backoff_var.get().strip(),
+            temperature=self.temperature_var.get().strip(),
+            num_ctx=self.num_ctx_var.get().strip(),
+            num_predict=self.num_predict_var.get().strip(),
+            tags=self.tags_var.get().strip(),
+            checkpoint=self.checkpoint_var.get().strip(),
+            debug_dir=self.debug_dir_var.get().strip(),
+            source_lang=self.source_lang_var.get().strip().lower(),
+            target_lang=self.target_lang_var.get().strip().lower(),
+            ollama_host=self.ollama_host_var.get().strip() or OLLAMA_HOST_DEFAULT,
+            cache=self.cache_var.get().strip(),
+            use_cache=bool(self.use_cache_var.get()),
+            glossary=self.glossary_var.get().strip(),
+            use_glossary=bool(self.use_glossary_var.get()),
+            tm_db=str(SQLITE_FILE),
+            tm_project_id=self.current_project_id,
+        )
+        return core_build_run_command(self._translator_cmd_prefix(), opts, tm_fuzzy_threshold="0.92")
 
     def _build_validation_command(self, epub_path: str) -> List[str]:
-        return self._translator_cmd_prefix() + [
-            "--validate-epub",
-            epub_path,
-            "--tags",
-            self.tags_var.get().strip(),
-        ]
+        return core_build_validation_command(self._translator_cmd_prefix(), epub_path, self.tags_var.get().strip())
 
     def _validate(self) -> Optional[str]:
         required = [
