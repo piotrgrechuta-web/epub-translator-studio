@@ -100,6 +100,8 @@ Dzieki temu zachowanie logiki runtime jest synchronizowane miedzy wariantami.
 - gotowy szablon PL do uzupelnienia GitHub Sponsors: `.github/SPONSORS_PROFILE_TEMPLATE_PL.md`
 - gotowy pakiet PL do promocji (posty/CTA do release): `.github/SPONSORS_OUTREACH_PACK_PL.md`
 - szablony community (zgloszenia i PR): `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md`
+- pakiet ustawien strony repo (description/website/topics): `.github/REPO_PROFILE_SETUP_PL.md`
+- gotowy szkic pierwszego release (PL): `.github/RELEASE_DRAFT_PL.md`
 
 ## Licencja
 - Licencja: `PolyForm Noncommercial 1.0.0` (`LICENSE`)

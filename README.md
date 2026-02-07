@@ -99,6 +99,8 @@ This keeps core runtime behavior synchronized across both variants.
 - ready PL template for GitHub Sponsors profile: `.github/SPONSORS_PROFILE_TEMPLATE_PL.md`
 - ready PL outreach pack (posts/release CTA): `.github/SPONSORS_OUTREACH_PACK_PL.md`
 - community templates for feedback/contributions: `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md`
+- repo profile setup pack (description/website/topics): `.github/REPO_PROFILE_SETUP_PL.md`
+- ready first release draft (PL): `.github/RELEASE_DRAFT_PL.md`
 
 ## License
 - License: `PolyForm Noncommercial 1.0.0` (`LICENSE`)

@@ -15,6 +15,10 @@ Jesli projekt pomaga Ci w pracy z EPUB, mozesz wesprzec dalszy rozwoj dobrowolna
   - `.github/SPONSORS_PROFILE_TEMPLATE_PL.md`
 - gotowe tresci promocyjne (posty, release notes, CTA):
   - `.github/SPONSORS_OUTREACH_PACK_PL.md`
+- gotowy pakiet ustawien strony repo:
+  - `.github/REPO_PROFILE_SETUP_PL.md`
+- gotowy szkic pierwszego release:
+  - `.github/RELEASE_DRAFT_PL.md`
 
 ## Co ustawic po aktywacji konta Sponsors
 
