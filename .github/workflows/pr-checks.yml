@@ -1,6 +1,10 @@
 name: PR checks
 
 on:
+  push:
+    branches:
+      - master
+      - ep2pl
   pull_request:
     branches:
       - master
