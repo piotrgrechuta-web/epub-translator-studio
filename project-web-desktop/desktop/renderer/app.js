@@ -23,6 +23,7 @@ const setupWinEl = document.getElementById('setup-win');
 const setupLinuxEl = document.getElementById('setup-linux');
 const setupMacEl = document.getElementById('setup-macos');
 const setupHintEl = document.getElementById('os-hint');
+const modelListEl = document.getElementById('model_list');
 
 const projectSelectEl = document.getElementById('project_select');
 const modeEl = document.getElementById('mode');
@@ -30,7 +31,10 @@ const profileSelectEl = document.getElementById('profile_select');
 const runAllBtn = document.getElementById('run-all-btn');
 const stopRunAllBtn = document.getElementById('stop-run-all-btn');
 
-verEl.textContent = `${window.appInfo.name} v${window.appInfo.version}`;
+const APP_INFO = (window.appInfo && typeof window.appInfo === 'object')
+  ? window.appInfo
+  : { name: 'Translator Studio Desktop', version: '0.0.0', platform: (navigator.platform || '') };
+if (verEl) verEl.textContent = `${APP_INFO.name} v${APP_INFO.version}`;
 
 let currentProjectId = null;
 let tmDbPath = 'translator_studio.db';
@@ -72,7 +76,7 @@ const setupCommands = {
 };
 
 function normalizePlatform() {
-  const p = String(window.appInfo?.platform || '').toLowerCase();
+  const p = String(APP_INFO.platform || '').toLowerCase();
   if (p.startsWith('win')) return 'windows';
   if (p === 'darwin') return 'macos';
   return 'linux';
@@ -92,6 +96,7 @@ function setupGuideText() {
 }
 
 function renderSetupGuide() {
+  if (!setupWinEl || !setupLinuxEl || !setupMacEl || !setupHintEl) return;
   setupWinEl.textContent = setupCommands.windows.join('\n');
   setupLinuxEl.textContent = setupCommands.linux.join('\n');
   setupMacEl.textContent = setupCommands.macos.join('\n');
@@ -106,15 +111,20 @@ async function copySetupGuide() {
     await navigator.clipboard.writeText(text);
     message('Skopiowano instrukcje pierwszego uruchomienia.');
   } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    message('Skopiowano instrukcje pierwszego uruchomienia.');
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (!ok) throw new Error('Clipboard command returned false');
+      message('Skopiowano instrukcje pierwszego uruchomienia.');
+    } catch (e) {
+      message(`Nie udalo sie skopiowac instrukcji: ${e.message || e}`, true);
+    }
   }
 }
 
@@ -216,15 +226,18 @@ function formatTs(ts) {
 
 function updateCounts(counts) {
   const c = counts || {};
+  if (!countsEl) return;
   countsEl.textContent = `idle=${c.idle || 0} | pending=${c.pending || 0} | running=${c.running || 0} | error=${c.error || 0}`;
 }
 
 function setRunAllButtons() {
+  if (!runAllBtn || !stopRunAllBtn) return;
   runAllBtn.disabled = runAllActive;
   stopRunAllBtn.disabled = !runAllActive;
 }
 
 function renderHistory(runs) {
+  if (!historyEl) return;
   const list = Array.isArray(runs) ? runs : [];
   if (!list.length) {
     historyEl.textContent = 'Brak historii runow dla aktywnego projektu.';
@@ -251,6 +264,17 @@ async function openExternal(url) {
     }
   } catch {}
   window.open(u, '_blank', 'noopener,noreferrer');
+}
+
+function renderModelList(models) {
+  if (!modelListEl) return;
+  const list = Array.isArray(models) ? models : [];
+  modelListEl.innerHTML = '';
+  for (const name of list) {
+    const o = document.createElement('option');
+    o.value = String(name);
+    modelListEl.appendChild(o);
+  }
 }
 
 function refillProfileSelect() {
@@ -603,13 +627,21 @@ async function fetchModels() {
     const provider = String(val('provider') || 'ollama');
     if (provider === 'ollama') {
       const data = await api(`/models/ollama?host=${encodeURIComponent(String(val('ollama_host') || ''))}`);
-      if (data.models?.length && !String(val('model') || '').trim()) setVal('model', data.models[0]);
+      renderModelList(data.models || []);
+      if (data.models?.length) {
+        const current = String(val('model') || '').trim();
+        if (!current || !data.models.includes(current)) setVal('model', data.models[0]);
+      }
       message(`Modele ollama: ${data.models?.length || 0}`);
       return;
     }
     const key = String(val('google_api_key') || '');
     const data = await api(`/models/google?api_key=${encodeURIComponent(key)}`);
-    if (data.models?.length && !String(val('model') || '').trim()) setVal('model', data.models[0]);
+    renderModelList(data.models || []);
+    if (data.models?.length) {
+      const current = String(val('model') || '').trim();
+      if (!current || !data.models.includes(current)) setVal('model', data.models[0]);
+    }
     message(`Modele google: ${data.models?.length || 0}`);
   } catch (e) {
     message(`Blad modeli: ${e.message}`, true);
@@ -619,9 +651,11 @@ async function fetchModels() {
 async function pollStatus() {
   try {
     const s = await api('/run/status');
-    statusEl.textContent = `Status: ${s.running ? 'RUNNING' : 'IDLE'} | mode=${s.mode} | exit=${s.exit_code ?? '--'}`;
-    logEl.textContent = s.log || '';
-    logEl.scrollTop = logEl.scrollHeight;
+    if (statusEl) statusEl.textContent = `Status: ${s.running ? 'RUNNING' : 'IDLE'} | mode=${s.mode} | exit=${s.exit_code ?? '--'}`;
+    if (logEl) {
+      logEl.textContent = s.log || '';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
     if (runAllActive && prevRunning && !s.running && !runAllBusy) {
       runAllBusy = true;
       const started = await runNextPending();
@@ -633,7 +667,7 @@ async function pollStatus() {
     }
     prevRunning = !!s.running;
   } catch (e) {
-    statusEl.textContent = `Status: backend offline (${e.message})`;
+    if (statusEl) statusEl.textContent = `Status: backend offline (${e.message})`;
   }
 }
 
@@ -662,80 +696,95 @@ async function pickIntoField(fieldId, save = false, filters = []) {
 }
 
 function bindEvents() {
-  document.getElementById('support-link').addEventListener('click', () => openExternal(SUPPORT_URL));
-  document.getElementById('repo-link').addEventListener('click', () => openExternal(REPO_URL));
-  document.getElementById('copy-setup-btn').addEventListener('click', copySetupGuide);
+  const bind = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', fn);
+  };
+  bind('support-link', () => openExternal(SUPPORT_URL));
+  bind('repo-link', () => openExternal(REPO_URL));
+  bind('copy-setup-btn', copySetupGuide);
 
-  document.getElementById('save-config-btn').addEventListener('click', () => saveConfig(true));
-  document.getElementById('models-btn').addEventListener('click', fetchModels);
-  document.getElementById('start-btn').addEventListener('click', startRun);
-  document.getElementById('validate-btn').addEventListener('click', validateRun);
-  document.getElementById('stop-btn').addEventListener('click', stopRun);
+  bind('save-config-btn', () => saveConfig(true));
+  bind('models-btn', fetchModels);
+  bind('start-btn', startRun);
+  bind('validate-btn', validateRun);
+  bind('stop-btn', stopRun);
 
-  document.getElementById('refresh-projects-btn').addEventListener('click', () => loadProjects(true));
-  document.getElementById('create-project-btn').addEventListener('click', createProject);
-  document.getElementById('save-project-btn').addEventListener('click', () => saveProject(true));
-  document.getElementById('delete-project-btn').addEventListener('click', deleteProject);
-  document.getElementById('save-profile-btn').addEventListener('click', saveProfile);
-  document.getElementById('apply-profile-btn').addEventListener('click', applyProfile);
+  bind('refresh-projects-btn', () => loadProjects(true));
+  bind('create-project-btn', createProject);
+  bind('save-project-btn', () => saveProject(true));
+  bind('delete-project-btn', deleteProject);
+  bind('save-profile-btn', saveProfile);
+  bind('apply-profile-btn', applyProfile);
 
-  document.getElementById('queue-btn').addEventListener('click', queueCurrent);
-  document.getElementById('run-next-btn').addEventListener('click', async () => { await runNextPending(); });
-  document.getElementById('run-all-btn').addEventListener('click', startRunAll);
-  document.getElementById('stop-run-all-btn').addEventListener('click', stopRunAll);
+  bind('queue-btn', queueCurrent);
+  bind('run-next-btn', async () => { await runNextPending(); });
+  bind('run-all-btn', startRunAll);
+  bind('stop-run-all-btn', stopRunAll);
 
-  projectSelectEl.addEventListener('change', async () => {
-    const raw = String(projectSelectEl.value || '').trim();
-    if (!raw) return;
-    await selectProject(Number(raw), null, true);
-  });
+  if (projectSelectEl) {
+    projectSelectEl.addEventListener('change', async () => {
+      const raw = String(projectSelectEl.value || '').trim();
+      if (!raw) return;
+      await selectProject(Number(raw), null, true);
+    });
+  }
 
-  modeEl.addEventListener('change', async () => {
-    if (suppressModeEvent) return;
-    const nextMode = modeNorm(String(modeEl.value || 'translate'));
-    captureCurrentStep();
-    if (currentProjectId != null) {
-      await saveProject(false);
-      await selectProject(currentProjectId, nextMode, false);
-    } else {
-      applyStepToForm(nextMode);
-    }
-  });
+  if (modeEl) {
+    modeEl.addEventListener('change', async () => {
+      if (suppressModeEvent) return;
+      const nextMode = modeNorm(String(modeEl.value || 'translate'));
+      captureCurrentStep();
+      if (currentProjectId != null) {
+        await saveProject(false);
+        await selectProject(currentProjectId, nextMode, false);
+      } else {
+        applyStepToForm(nextMode);
+      }
+    });
+  }
 
-  profileSelectEl.addEventListener('change', () => {
-    stepValues[currentMode()].profile_id = selectedProfileId();
-  });
+  if (profileSelectEl) {
+    profileSelectEl.addEventListener('change', () => {
+      stepValues[currentMode()].profile_id = selectedProfileId();
+    });
+  }
 
-  document.getElementById('pick_new_project_source_btn').addEventListener('click', async () => {
+  bind('pick_new_project_source_btn', async () => {
     await pickIntoField('new_project_source', false, [{ name: 'EPUB', extensions: ['epub'] }]);
   });
-  document.getElementById('pick_input_epub_btn').addEventListener('click', async () => {
+  bind('pick_input_epub_btn', async () => {
     await pickIntoField('input_epub', false, [{ name: 'EPUB', extensions: ['epub'] }]);
   });
-  document.getElementById('pick_output_epub_btn').addEventListener('click', async () => {
+  bind('pick_output_epub_btn', async () => {
     await pickIntoField('output_epub', true, [{ name: 'EPUB', extensions: ['epub'] }]);
   });
-  document.getElementById('pick_prompt_btn').addEventListener('click', async () => {
+  bind('pick_prompt_btn', async () => {
     await pickIntoField('prompt', false, [{ name: 'TXT', extensions: ['txt'] }]);
   });
-  document.getElementById('pick_glossary_btn').addEventListener('click', async () => {
+  bind('pick_glossary_btn', async () => {
     await pickIntoField('glossary', false, [{ name: 'Text', extensions: ['txt', 'csv', 'json', 'jsonl'] }]);
   });
-  document.getElementById('pick_cache_btn').addEventListener('click', async () => {
+  bind('pick_cache_btn', async () => {
     await pickIntoField('cache', true, [{ name: 'JSONL', extensions: ['jsonl', 'json'] }]);
   });
 }
 
 async function init() {
-  renderSetupGuide();
-  bindEvents();
-  setRunAllButtons();
-  await loadConfig();
-  await loadProfiles();
-  await loadProjects(false);
-  await refreshHistory();
-  await pollStatus();
-  setInterval(pollStatus, 1200);
+  try {
+    renderSetupGuide();
+    bindEvents();
+    setRunAllButtons();
+    await loadConfig();
+    await loadProfiles();
+    await loadProjects(false);
+    await refreshHistory();
+    await fetchModels();
+    await pollStatus();
+    setInterval(pollStatus, 1200);
+  } catch (e) {
+    message(`Blad inicjalizacji UI: ${e.message || e}`, true);
+  }
 }
 
 init();
