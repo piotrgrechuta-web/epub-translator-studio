@@ -37,3 +37,8 @@ python start_horizon.py
 ## Dokumentacja
 - pełny manual użytkownika: `MANUAL_PL.md`
 - workflow Git na wielu komputerach: `GIT_WORKFLOW_PL.md`
+
+## Wymagania AI (konieczne)
+- Lokalnie: zainstalowana Ollama + co najmniej jeden model (np. `ollama pull llama3.1:8b`).
+- Online (np. Google Gemini): poprawny klucz API (`GOOGLE_API_KEY` lub pole w GUI).
+- Dla providerow online wymagany jest internet.

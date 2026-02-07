@@ -4,7 +4,7 @@ Sprache: [English](README.md) | [Polski](README.pl.md) | **Deutsch** | [Espanol]
 
 Desktop-Toolkit fuer Uebersetzung und Bearbeitung von EPUB-Dateien mit KI.
 
-Schluesselwoerter: siehe `KEYWORDS.de.txt`.
+KEYWORDS: `EPUB Uebersetzer`, `EPUB Uebersetzungswerkzeug`, `KI Uebersetzung`, `ebook Uebersetzer`, `Ollama`, `Google Gemini`, `Translation Memory`, `QA Gate`, `Tkinter`, `Electron`, `FastAPI`, `Python`.
 
 ## Funktionen
 - EPUB Uebersetzung (`translate`) und Nachbearbeitung (`edit`)
@@ -34,6 +34,11 @@ cd project-web-desktop
 .\run-desktop.ps1
 ```
 
+## Voraussetzungen
+- Lokale KI mit Ollama: Ollama installieren und mindestens ein Modell laden (z. B. `ollama pull llama3.1:8b`).
+- Online-KI (z. B. Google Gemini): gueltigen API-Key setzen (`GOOGLE_API_KEY` oder GUI-Feld).
+- Fuer Online-Provider ist Internetzugang erforderlich.
+
 ## Dokumentation
 - Benutzerhandbuch (PL): `project-tkinter/MANUAL_PL.md`
 - Git Workflow (PL): `project-tkinter/GIT_WORKFLOW_PL.md`
@@ -44,4 +49,3 @@ cd project-web-desktop
 - Kopieren und Aendern nur fuer nichtkommerzielle Zwecke.
 - Hinweise auf Urheber und Required Notice behalten (`NOTICE`, `AUTHORS`).
 - Praxisbeispiele (DE): `LICENSE_GUIDE_DE.md`
-

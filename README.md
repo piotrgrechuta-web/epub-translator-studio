@@ -4,8 +4,7 @@ Language: **English** | [Polski](README.pl.md) | [Deutsch](README.de.md) | [Espa
 
 Desktop toolkit for translating and editing EPUB files with AI.
 
-Keywords: `EPUB translator`, `AI translation`, `Ollama`, `Google Gemini`, `Translation Memory`, `QA`, `Tkinter`, `Electron`, `FastAPI`, `Python`.
-Localized keyword sets: `KEYWORDS.en.txt`, `KEYWORDS.pl.txt`, `KEYWORDS.de.txt`, `KEYWORDS.es.txt`, `KEYWORDS.fr.txt`, `KEYWORDS.pt.txt`.
+KEYWORDS: `EPUB translator`, `EPUB translation tool`, `AI translation`, `ebook translator`, `Ollama translator`, `Google Gemini translation`, `Translation Memory`, `QA gate`, `Tkinter`, `Electron`, `FastAPI`, `Python`.
 
 ## What it does
 - EPUB translation (`translate`) and post-editing (`edit`)
@@ -40,6 +39,11 @@ cd project-web-desktop
 .\run-backend.ps1
 .\run-desktop.ps1
 ```
+
+## Requirements
+- Local AI with Ollama: install Ollama and pull at least one model (example: `ollama pull llama3.1:8b`).
+- Online AI (for example Google Gemini): set a valid API key (`GOOGLE_API_KEY` or GUI field).
+- Internet access is required for online providers.
 
 ## Architecture (Variant 0: shared core)
 - shared runtime logic lives in `project-tkinter/runtime_core.py`

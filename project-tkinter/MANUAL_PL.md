@@ -71,6 +71,24 @@ python start.py
 - kliknij `Waliduj EPUB`,
 - opcjonalnie otworz `Studio Tools -> QA` i zrob `Scan`.
 
+## 3A. Wymagania AI (konieczne)
+
+Do uruchamiania translacji potrzebujesz co najmniej jednego providera AI:
+
+1. Provider lokalny (`Ollama`)
+- zainstalowana usluga Ollama,
+- pobrany co najmniej jeden model, np.:
+```powershell
+ollama pull llama3.1:8b
+```
+- w GUI poprawny `Ollama host` (domyslnie `http://127.0.0.1:11434`).
+
+2. Provider online (np. `Google Gemini`)
+- poprawny klucz API (`Google API key` / zmienna `GOOGLE_API_KEY`),
+- polaczenie z internetem.
+
+Bez modelu w Ollama albo bez poprawnego API key run nie wystartuje.
+
 ## 4. Kluczowe pojecia
 
 ### 4.1 Projekt

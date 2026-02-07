@@ -4,7 +4,7 @@ Idioma: [English](README.md) | [Polski](README.pl.md) | [Deutsch](README.de.md) 
 
 Kit desktop para traducao e edicao de arquivos EPUB com IA.
 
-Palavras-chave: veja `KEYWORDS.pt.txt`.
+KEYWORDS: `tradutor EPUB`, `ferramenta de traducao EPUB`, `traducao com IA`, `tradutor de ebooks`, `Ollama`, `Google Gemini`, `Translation Memory`, `QA gate`, `Tkinter`, `Electron`, `FastAPI`, `Python`.
 
 ## O que faz
 - Traducao EPUB (`translate`) e pos-edicao (`edit`)
@@ -34,6 +34,11 @@ cd project-web-desktop
 .\run-desktop.ps1
 ```
 
+## Requisitos
+- IA local com Ollama: instalar Ollama e baixar pelo menos um modelo (exemplo: `ollama pull llama3.1:8b`).
+- IA online (por exemplo Google Gemini): configurar uma API key valida (`GOOGLE_API_KEY` ou campo na GUI).
+- Para provedores online, acesso a internet e obrigatorio.
+
 ## Documentacao
 - Manual do usuario (PL): `project-tkinter/MANUAL_PL.md`
 - Workflow Git (PL): `project-tkinter/GIT_WORKFLOW_PL.md`
@@ -44,4 +49,3 @@ cd project-web-desktop
 - Voce pode copiar e modificar apenas para fins nao comerciais.
 - Mantenha atribuicao do autor e Required Notice (`NOTICE`, `AUTHORS`).
 - Exemplos praticos (PT): `LICENSE_GUIDE_PT.md`
-

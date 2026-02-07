@@ -4,8 +4,8 @@ Jezyk: [English](README.md) | **Polski** | [Deutsch](README.de.md) | [Espanol](R
 
 Desktopowy zestaw narzedzi do tlumaczenia i redakcji plikow EPUB z AI.
 
-Slowa kluczowe: `EPUB translator`, `AI translation`, `Ollama`, `Google Gemini`, `Translation Memory`, `QA`, `Tkinter`, `Electron`, `FastAPI`, `Python`.
-Zestawy slow kluczowych: `KEYWORDS.en.txt`, `KEYWORDS.pl.txt`, `KEYWORDS.de.txt`, `KEYWORDS.es.txt`, `KEYWORDS.fr.txt`, `KEYWORDS.pt.txt`.
+KEYWORDS: `tlumacz EPUB`, `narzedzie do tlumaczenia EPUB`, `tlumaczenie AI`, `tlumacz ebookow`, `Ollama`, `Google Gemini`, `Translation Memory`, `QA gate`, `Tkinter`, `Electron`, `FastAPI`, `Python`.
+
 
 ## Co to robi
 - tlumaczenie EPUB (`translate`) i redakcja (`edit`)
@@ -41,6 +41,11 @@ cd project-web-desktop
 .\run-desktop.ps1
 ```
 
+## Wymagania
+- Lokalny AI (Ollama): zainstalowana Ollama oraz pobrany co najmniej jeden model (np. `ollama pull llama3.1:8b`).
+- AI online (np. Google Gemini): ustawiony poprawny klucz API (`GOOGLE_API_KEY` lub pole w GUI).
+- Dla providerow online potrzebny jest internet.
+
 ## Architektura (Variant 0: shared core)
 - wspolna logika runtime jest w `project-tkinter/runtime_core.py`
 - backend web (`project-web-desktop/backend/app.py`) importuje ten sam core
@@ -69,3 +74,6 @@ Dzieki temu zachowanie logiki runtime jest synchronizowane miedzy wariantami.
   - ES: `LICENSE_GUIDE_ES.md`
   - FR: `LICENSE_GUIDE_FR.md`
   - PT: `LICENSE_GUIDE_PT.md`
+
+
+

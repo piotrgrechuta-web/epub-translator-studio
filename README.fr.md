@@ -4,7 +4,7 @@ Langue: [English](README.md) | [Polski](README.pl.md) | [Deutsch](README.de.md) 
 
 Boite a outils desktop pour traduire et editer des fichiers EPUB avec IA.
 
-Mots-cles: voir `KEYWORDS.fr.txt`.
+KEYWORDS: `traducteur EPUB`, `outil de traduction EPUB`, `traduction IA`, `traducteur ebook`, `Ollama`, `Google Gemini`, `Translation Memory`, `QA gate`, `Tkinter`, `Electron`, `FastAPI`, `Python`.
 
 ## Fonctions
 - Traduction EPUB (`translate`) et post-edition (`edit`)
@@ -34,6 +34,11 @@ cd project-web-desktop
 .\run-desktop.ps1
 ```
 
+## Prerequis
+- IA locale avec Ollama: installer Ollama et recuperer au moins un modele (exemple: `ollama pull llama3.1:8b`).
+- IA en ligne (exemple Google Gemini): definir une API key valide (`GOOGLE_API_KEY` ou champ GUI).
+- Un acces internet est requis pour les providers en ligne.
+
 ## Documentation
 - Manuel utilisateur (PL): `project-tkinter/MANUAL_PL.md`
 - Workflow Git (PL): `project-tkinter/GIT_WORKFLOW_PL.md`
@@ -44,4 +49,3 @@ cd project-web-desktop
 - Copie et modification autorisees uniquement pour usage non commercial.
 - Conserver attribution auteur et Required Notice (`NOTICE`, `AUTHORS`).
 - Exemples pratiques (FR): `LICENSE_GUIDE_FR.md`
-
