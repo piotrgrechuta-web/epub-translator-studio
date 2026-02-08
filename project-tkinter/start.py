@@ -403,7 +403,7 @@ class TranslatorGUI:
         return "break"
 
     def _shortcut_start_run(self, _: tk.Event) -> str:
-        if self.process is not None:
+        if self.proc is not None:
             self._set_inline_notice(self.tr("info.process_running", "Process is already running."), level="warn")
             return "break"
         self._start_process()
