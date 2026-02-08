@@ -926,27 +926,33 @@ class TranslatorGUI:
         m = {
             "none": "-",
             "ok": "ok",
-            "error": "blad",
+            "error": "err",
             "running": "run",
-            "pending": "kolejka",
+            "pending": "q",
         }
         key = str(value or "none").strip().lower()
         return m.get(key, key or "-")
 
     def _next_action_label(self, value: str) -> str:
         m = {
-            "done": "zakonczone",
-            "translate": "uruchom translate",
-            "translate_retry": "ponow translate",
-            "edit": "uruchom edit",
-            "edit_retry": "ponow edit",
-            "running:translate": "trwa translate",
-            "running:edit": "trwa edit",
-            "pending:translate": "kolejka translate",
-            "pending:edit": "kolejka edit",
+            "done": "koniec",
+            "translate": "T",
+            "translate_retry": "T!",
+            "edit": "R",
+            "edit_retry": "R!",
+            "running:translate": "run T",
+            "running:edit": "run R",
+            "pending:translate": "q T",
+            "pending:edit": "q R",
         }
         key = str(value or "").strip().lower()
         return m.get(key, key or "-")
+
+    def _short_text(self, value: str, max_len: int = 42) -> str:
+        text = str(value or "").strip()
+        if max_len <= 3 or len(text) <= max_len:
+            return text
+        return text[: max_len - 3] + "..."
 
     def _refresh_status_panel(self, rows: Optional[List[Any]] = None) -> None:
         if rows is None:
@@ -965,6 +971,8 @@ class TranslatorGUI:
             name = str(r.get("name") or "-")
             step = str(r.get("active_step") or "-")
             book = str(r.get("book") or "-")
+            name_short = self._short_text(name, 34)
+            book_short = self._short_text(book, 44)
             tr = r.get("translate") if isinstance(r.get("translate"), dict) else {}
             ed = r.get("edit") if isinstance(r.get("edit"), dict) else {}
             t_done = int(tr.get("done", 0) or 0)
@@ -976,8 +984,8 @@ class TranslatorGUI:
             next_action = self._next_action_label(str(r.get("next_action") or ""))
             self.status_list.insert(
                 "end",
-                f"{name} | {st} | step={step} | book={book} | T={t_done}/{t_total}({t_status}) | "
-                f"R={r_done}/{r_total}({r_status}) | dalej={next_action}",
+                f"{name_short} | {st}/{step} | ks={book_short} | T:{t_done}/{t_total} {t_status} | "
+                f"R:{r_done}/{r_total} {r_status} | -> {next_action}",
             )
         self.status_counts_var.set(
             f"idle={counts.get('idle',0)} | pending={counts.get('pending',0)} | "
