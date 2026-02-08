@@ -2,17 +2,17 @@
 
 ## 7.1. Priorytety techniczne
 
-1. Stabilnosc runtime i redukcja edge-case crashy.
-2. Lepsze testy automatyczne backend + UI smoke.
-3. Lepsza ergonomia pracy na dwoch komputerach.
-4. Uporzadkowanie danych lokalnych (cache/db/lock).
+1. Integralnosc EPUB po tlumaczeniu (tagi inline, encje, `&shy;`).
+2. Diff-aware retranslation zamiast pelnego rerunu ksiazki.
+3. Kontekst translacji i spojnosc encji/postaci.
+4. QA jezykowe pod redakcje polszczyzny.
 
 ## 7.2. Priorytety produktowe
 
-1. Przejrzystosc workflow translacja -> QA -> publish.
-2. Lepsza konfiguracja providerow i modeli.
-3. Silniejsza dokumentacja onboardingowa.
-4. Bardziej czytelne komunikaty bledow.
+1. Workflow "tlumacz -> czytaj -> popraw -> wznow".
+2. Widoczny status projektu i etapow bez watpliwosci "co dalej".
+3. Spojnosc stylu miedzy tomami jednej serii.
+4. Lepsza dokumentacja onboardingowa i recovery.
 
 ## 7.3. Jak zglaszac zmiany
 
@@ -55,3 +55,13 @@ Jesli projekt oszczedza czas:
 - krotszy czas od bug report do fix,
 - mniejsza liczba problemow z konfiguracja,
 - szybszy onboarding nowego urzadzenia.
+
+## 7.8. Kolejne milestone'y (po M1-M3)
+
+1. `M4: Context-Aware Translation`
+2. `M5: Text Integrity + Diff-Retranslation`
+3. `M6: Polish QA + Live Reading Loop`
+4. `M7: Batch Library + Style Memory`
+
+Zakres i kryteria `Done` sa utrzymywane w:
+- `docs/09-Backlog-do-uzgodnienia.md`
