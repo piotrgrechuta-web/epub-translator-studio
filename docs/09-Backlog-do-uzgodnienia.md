@@ -89,7 +89,12 @@ Status M3: `w toku` (2/3 issue zamkniete).
   - `/wiki` dziala bez przekierowania na strone repo,
   - wiki ma minimum 1 strone i sidebar.
 
-Status: `w toku` (backend Wiki wymaga inicjalizacji pierwszej strony `Home`).
+Status: `w toku` (backend Wiki wymaga inicjalizacji pierwszej strony `Home` przez UI GitHub).
+
+Postep:
+- gotowy pakiet stron wiki w repo: `docs/wiki/Home.md`, `docs/wiki/_Sidebar.md`, `docs/wiki/Workflow-and-Recovery.md`,
+- gotowy skrypt publikacji: `project-tkinter/scripts/publish_wiki.ps1`,
+- po jednorazowej inicjalizacji backendu Wiki (klik w UI) publikacja idzie automatycznie skryptem.
 
 ### Issue 8: Release checklist i changelog discipline
 - Zakres:
@@ -129,8 +134,8 @@ Status:
 2. restart runu korzysta z ledgera (`COMPLETED`) bez utraty idempotentnosci,
 3. ledger jest czyszczony z nieaktualnych segmentow po zmianie zrodla.
 - `do domkniecia`:
-1. dashboard postepu 100% oparty o ledger statuses (w tym breakdown `PENDING/PROCESSING/ERROR` w UI),
-2. metryki kosztowe per run (API/tokens) z mapowaniem na segment_ledger.
+1. dopiac eksport metryk ledgera do widoku release notes (obecnie dashboard + runtime),
+2. rozszerzyc telemetry o histogram retry/timeouts per provider.
 
 ### Issue #27: Human-in-the-loop decision memory + adaptive few-shot
 - Zakres:
@@ -160,6 +165,7 @@ Status:
 - `czesc wdrozona`:
 1. edytor klasyczny ma tokeny inline (`[[TAG###]]`) z blokada modyfikacji tagow,
 2. zapis segmentu nie splaszcza juz struktury inline XHTML.
+3. dodano regresyjny test nested-inline (`test_text_preserve_keeps_nested_inline_tags`).
 - `do domkniecia`:
 1. tokenizacja na poziomie nested-inline chips z granularna edycja tylko tekstu miedzy tokenami,
 2. dodatkowe testy regresji dla bardziej zlozonych kombinacji nested inline tags.

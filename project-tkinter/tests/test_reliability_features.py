@@ -99,6 +99,18 @@ def test_text_preserve_keeps_inline_tags() -> None:
     assert as_text == "Hi Earth?"
 
 
+def test_text_preserve_keeps_nested_inline_tags() -> None:
+    root = etree.fromstring(b"<p>A <i>very <b>deep</b></i> example.</p>")
+    set_text_preserving_inline(root, "X Y Z")
+    italic = root.find(".//i")
+    bold = root.find(".//b")
+    assert italic is not None
+    assert bold is not None
+    assert bold.getparent() is italic
+    as_text = etree.tostring(root, encoding="unicode", method="text")
+    assert as_text == "X Y Z"
+
+
 def test_build_run_command_includes_run_step() -> None:
     opts = RunOptions(
         provider="ollama",

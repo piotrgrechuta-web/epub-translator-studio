@@ -4,9 +4,9 @@
 
 - `M1`: zrealizowane.
 - `M2`: zrealizowane.
-- `M3`: w toku (Wiki backend do domkniecia).
+- `M3`: w toku (pakiet Wiki gotowy, backend Wiki czeka na inicjalizacje `Home` w UI GitHub).
 - `M7`: uruchomiony szkielet techniczny (seria + slownik serii + auto-detekcja + merge glosariusza).
-- `M4`: w realizacji (ledger orchestration upfront + twardy gate EPUBCheck + tokenized inline editor).
+- `M4`: w realizacji (ledger orchestration upfront + twardy gate EPUBCheck + tokenized inline editor + dashboard ledger metrics).
 - `M5-M6`: plan zatwierdzony, kolejne incrementy po domknieciu M3/M4.
 
 ## 7.1. Priorytety techniczne

@@ -49,3 +49,8 @@ Aktualny punkt wejscia dokumentacji:
 Wiki GitHub (`/wiki`) moze wymagac inicjalizacji backendu.
 Jesli `/wiki` przekierowuje na strone repo, patrz:
 - `06-Troubleshooting.md`, sekcja `6.8`.
+
+Stan na teraz:
+- przygotowano gotowy zestaw stron Wiki w `docs/wiki/` (`Home`, `_Sidebar`, `Workflow-and-Recovery`),
+- przygotowano skrypt publikacji `project-tkinter/scripts/publish_wiki.ps1`,
+- po jednorazowej inicjalizacji backendu Wiki (utworzenie pierwszej strony przez UI GitHub) mozna wypchnac strony skryptem.

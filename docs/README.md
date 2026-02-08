@@ -27,6 +27,12 @@ Uklad jest przygotowany tak, aby mozna go:
 - `project-tkinter/GIT_WORKFLOW_PL.md`
 - `SUPPORT_PL.md`
 
+## Wiki bootstrap
+
+- Startowe strony Wiki sa przygotowane w `docs/wiki/`.
+- Publikacja do Wiki po inicjalizacji backendu:
+  - `project-tkinter/scripts/publish_wiki.ps1`
+
 ## Status
 
 - Branch protection: aktywna na `main`

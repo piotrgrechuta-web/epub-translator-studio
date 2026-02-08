@@ -83,6 +83,11 @@ Co zrobic:
 gh api repos/<owner>/<repo> --jq "{has_wiki,default_branch:.default_branch}"
 git ls-remote https://github.com/<owner>/<repo>.wiki.git
 ```
+5. Opublikuj przygotowany pakiet Wiki:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File project-tkinter/scripts/publish_wiki.ps1
+```
 
 Fallback:
 - jezeli backend Wiki nadal nie odpowiada, trzymaj dokumentacje w `docs/` i publikuj przez GitHub Pages:

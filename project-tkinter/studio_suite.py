@@ -801,11 +801,102 @@ class StudioSuiteWindow:
             qa_load_rows = con.execute(
                 "SELECT COALESCE(NULLIF(assignee,''),'unassigned') a, COUNT(*) c FROM qa_findings WHERE status IN ('open','in_progress') GROUP BY a ORDER BY c DESC LIMIT 20"
             ).fetchall()
+            pid = self.gui.current_project_id
+            step = (self.gui.mode_var.get().strip() or "translate").lower()
+            ledger_exists = con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'segment_ledger'"
+            ).fetchone() is not None
+            ledger_rows: List[sqlite3.Row] = []
+            latest_run: Optional[sqlite3.Row] = None
+            latest_rows: List[sqlite3.Row] = []
+            if ledger_exists and pid is not None:
+                ledger_rows = con.execute(
+                    """
+                    SELECT status, COUNT(*) c
+                    FROM segment_ledger
+                    WHERE project_id = ? AND run_step = ?
+                    GROUP BY status
+                    """,
+                    (int(pid), step),
+                ).fetchall()
+                latest_run = con.execute(
+                    """
+                    SELECT id, status, started_at, finished_at
+                    FROM runs
+                    WHERE project_id = ? AND step = ?
+                    ORDER BY started_at DESC
+                    LIMIT 1
+                    """,
+                    (int(pid), step),
+                ).fetchone()
+                if latest_run is not None:
+                    t0 = int(latest_run["started_at"] or 0)
+                    t1 = int(latest_run["finished_at"] or int(time.time()))
+                    if t1 < t0:
+                        t1 = t0
+                    latest_rows = con.execute(
+                        """
+                        SELECT COALESCE(NULLIF(provider,''),'unknown') provider,
+                               COUNT(*) c,
+                               COALESCE(SUM(source_len), 0) src_len,
+                               COALESCE(SUM(LENGTH(translated_inner)), 0) tgt_len
+                        FROM segment_ledger
+                        WHERE project_id = ?
+                          AND run_step = ?
+                          AND status = 'COMPLETED'
+                          AND updated_at >= ?
+                          AND updated_at <= ?
+                        GROUP BY provider
+                        ORDER BY c DESC
+                        """,
+                        (int(pid), step, t0, t1),
+                    ).fetchall()
         finally:
             con.close()
         ok = sum(1 for r in runs if str(r["status"]) == "ok"); err = len(runs) - ok
         done = sum(int(r["global_done"] or 0) for r in runs); total = sum(int(r["global_total"] or 0) for r in runs)
         tok = int(done * 55)
+        ledger_counts = {"PENDING": 0, "PROCESSING": 0, "COMPLETED": 0, "ERROR": 0}
+        for row in ledger_rows:
+            st = str(row["status"] or "").strip().upper()
+            if st in ledger_counts:
+                ledger_counts[st] += int(row["c"] or 0)
+        api_providers = {"google", "ollama"}
+        reuse_providers = {"cache", "tm", "ledger"}
+        api_completed = 0
+        reuse_completed = 0
+        api_src_len = 0
+        api_tgt_len = 0
+        by_provider: List[str] = []
+        for row in latest_rows:
+            provider = str(row["provider"] or "unknown").strip().lower()
+            cnt = int(row["c"] or 0)
+            src_len = int(row["src_len"] or 0)
+            tgt_len = int(row["tgt_len"] or 0)
+            by_provider.append(f"- {provider}: {cnt}")
+            if provider in reuse_providers:
+                reuse_completed += cnt
+                continue
+            if provider in api_providers or provider not in reuse_providers:
+                api_completed += cnt
+                api_src_len += src_len
+                api_tgt_len += tgt_len
+        api_in_tok = int(api_src_len / 4)
+        api_out_tok = int(api_tgt_len / 4)
+        api_total_tok = api_in_tok + api_out_tok
+        latest_run_text = "n/a"
+        if latest_run is not None:
+            started = int(latest_run["started_at"] or 0)
+            finished = int(latest_run["finished_at"] or 0)
+            if started > 0:
+                started_txt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started))
+            else:
+                started_txt = "n/a"
+            if finished > 0:
+                finished_txt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(finished))
+            else:
+                finished_txt = "running"
+            latest_run_text = f"{started_txt} -> {finished_txt} | status={str(latest_run['status'] or '')}"
         self.dash.delete("1.0", "end")
         self.dash.insert(
             "1.0",
@@ -817,6 +908,24 @@ class StudioSuiteWindow:
         )
         for r in qa_load_rows:
             self.dash.insert("end", f"- {r['a']}: {r['c']}\n")
+        self.dash.insert("end", "\n")
+        if self.gui.current_project_id is None:
+            self.dash.insert("end", "Active project: n/a\n")
+            return
+        self.dash.insert(
+            "end",
+            f"Active project id={int(self.gui.current_project_id)} step={step}\n"
+            f"Ledger status: PENDING={ledger_counts['PENDING']} PROCESSING={ledger_counts['PROCESSING']} "
+            f"COMPLETED={ledger_counts['COMPLETED']} ERROR={ledger_counts['ERROR']}\n"
+            f"Latest run: {latest_run_text}\n"
+            f"Latest run completed: api={api_completed} reuse={reuse_completed}\n"
+            f"Latest run estimated API tokens: in={api_in_tok} out={api_out_tok} total={api_total_tok} "
+            f"(~M={api_total_tok/1_000_000:.3f})\n",
+        )
+        if by_provider:
+            self.dash.insert("end", "Latest run by provider:\n")
+            for line in by_provider:
+                self.dash.insert("end", line + "\n")
 
     def _build_plugins_tab(self, nb: ttk.Notebook) -> None:
         tab = ttk.Frame(nb, padding=8); nb.add(tab, text=self.gui.tr("studio.tab.plugins", "Provider Plugins"))
