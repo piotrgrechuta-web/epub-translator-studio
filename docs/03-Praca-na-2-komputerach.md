@@ -69,3 +69,34 @@ Potem ewentualnie przywroc fragmenty:
 git stash list
 git stash pop
 ```
+
+## Recovery po awarii runtime (db/cache/lock)
+
+Szybki playbook, gdy aplikacja padla w trakcie runu:
+
+1. Zrob kopie stanu:
+```powershell
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+New-Item -ItemType Directory -Force ".\backup\$stamp" | Out-Null
+Copy-Item "project-tkinter\translator_studio.db" ".\backup\$stamp\translator_studio.db" -ErrorAction SilentlyContinue
+Copy-Item "project-tkinter\output\*.jsonl" ".\backup\$stamp\" -ErrorAction SilentlyContinue
+```
+2. Wyczysc tylko stale locki:
+```powershell
+Remove-Item "project-tkinter\translator_studio.db.lock" -Force -ErrorAction SilentlyContinue
+cmd /c if exist .git\index.lock del /f /q .git\index.lock
+```
+3. Gdy cache jest uszkodzony, odsun go i uruchom ponownie:
+```powershell
+if (Test-Path "project-tkinter\output\cache_book.jsonl") {
+  Rename-Item "project-tkinter\output\cache_book.jsonl" "cache_book.broken.jsonl.$stamp"
+}
+```
+4. Sprawdz integralnosc DB:
+```powershell
+python -c "import sqlite3; c=sqlite3.connect(r'project-tkinter\\translator_studio.db'); print(c.execute('pragma integrity_check').fetchone()[0]); c.close()"
+```
+5. Potwierdz start aplikacji:
+```powershell
+python project-tkinter\scripts\smoke_gui.py
+```

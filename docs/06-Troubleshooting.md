@@ -87,3 +87,30 @@ git ls-remote https://github.com/<owner>/<repo>.wiki.git
 Fallback:
 - jezeli backend Wiki nadal nie odpowiada, trzymaj dokumentacje w `docs/` i publikuj przez GitHub Pages:
   - `https://piotr-grechuta.github.io/epub-translator-studio/`
+
+## 6.9. Crash w trakcie runu (db/cache)
+
+Objaw:
+- aplikacja zamknela sie podczas translacji,
+- kolejny start pokazuje niespojny stan lub blad odczytu cache.
+
+Szybka naprawa:
+1. Zrob backup `project-tkinter/translator_studio.db`.
+2. Usun stale locki:
+```powershell
+Remove-Item "project-tkinter\translator_studio.db.lock" -Force -ErrorAction SilentlyContinue
+```
+3. Odsun uszkodzony cache:
+```powershell
+if (Test-Path "project-tkinter\output\cache_book.jsonl") {
+  Rename-Item "project-tkinter\output\cache_book.jsonl" "cache_book.broken.jsonl"
+}
+```
+4. Sprawdz DB:
+```powershell
+python -c "import sqlite3; c=sqlite3.connect(r'project-tkinter\\translator_studio.db'); print(c.execute('pragma integrity_check').fetchone()[0]); c.close()"
+```
+5. Uruchom smoke:
+```powershell
+python project-tkinter\scripts\smoke_gui.py
+```

@@ -7,15 +7,23 @@ Sponsors + Community Setup Update
 
 Opis:
 ```markdown
-## Co nowego
+## Zmiany
 - domkniete materialy sponsors (profil + outreach pack + szybkie checklisty),
 - dodane szablony community: Bug report, Feature request, Pull Request,
 - uporzadkowane sekcje wsparcia w dokumentacji (README/README PL/SUPPORT/MANUAL).
 
-## Dla uzytkownika
-- latwiej zglosic blad lub pomysl,
-- latwiej znalezc projekt przez lepiej opisane repo,
-- jasna sciezka wsparcia i regularnych aktualizacji.
+## Ryzyka
+- brak znanych regresji funkcjonalnych po smoke testach i py_compile,
+- przy zmianach UI sprawdz kompatybilnosc profili projektu po aktualizacji.
+
+## Migracja
+- nie wymaga migracji danych od uzytkownika,
+- dla pluginow providerow: po aktualizacji wykonaj "Rebuild manifest" i "Validate all".
+
+## Testy
+- `python -m pytest -q project-tkinter/tests`,
+- `python project-tkinter/scripts/smoke_gui.py`,
+- CI: lint, syntax smoke, PR description check, security scans.
 
 ## Support
 Jesli projekt oszczedza Ci czas, wesprzyj dalszy rozwoj:

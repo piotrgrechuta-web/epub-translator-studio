@@ -14,7 +14,8 @@ Uruchamia sie na:
 Sprawdza:
 - Python lint (krytyczne bledy: E9/F63/F7/F82),
 - syntax smoke (`py_compile`) dla entrypointow,
-- poprawny JSON w `package.json` i `package-lock.json`.
+- testy jednostkowe parsera EPUB (`project-tkinter/tests`),
+- smoke runtime/UI (`project-tkinter/scripts/smoke_gui.py`).
 
 ### PR description check
 
@@ -24,6 +25,15 @@ Wymusza jakosc opisu PR:
 - sekcje obowiazkowe,
 - brak placeholderow,
 - min. poziom wypelnienia checklisty.
+
+### Security scans
+
+Plik: `.github/workflows/security-scans.yml`
+
+Sprawdza:
+- sekrety (gitleaks),
+- audit zaleznosci Python (`pip-audit` report),
+- gate krytycznych podatnosci (Trivy, severity `CRITICAL`).
 
 ## 5.2. Ochrona galezi
 
@@ -46,10 +56,9 @@ Zmiana jest gotowa, gdy:
 ## 5.4. Zalecane rozszerzenia CI
 
 Kolejne sensowne kroki:
-- testy jednostkowe backend,
-- smoke test endpointow API,
-- prosty test uruchomienia renderer (headless),
-- skan sekretow i zaleznosci.
+- testy integracyjne na zestawie przykladowych EPUB,
+- raport pokrycia testami dla parsera i runtime,
+- okresowy nightly scan zaleznosci z artefaktami raportow.
 
 ## 5.5. Dlaczego ten poziom jest dobry na teraz
 

@@ -2,7 +2,8 @@
 
 Status:
 - `M1 wdrozone` w kodzie i dokumentacji (2026-02-08),
-- `M2/M3` gotowe do publikacji jako kolejne Issues/Milestones.
+- `M2 wdrozone` w kodzie i CI (2026-02-08),
+- `M3 czesciowo wdrozone`: Issue 8 i 9 `zrealizowane`, Issue 7 `w toku` (inicjalizacja Wiki backend).
 
 ## Cel
 
@@ -45,6 +46,8 @@ Status M1: `zrealizowane`.
 
 ## M2: CI Hardening + Test Coverage
 
+Status M2: `zrealizowane`.
+
 ### Issue 4: Testy jednostkowe parsera EPUB
 - Zakres:
   - testy OPF/spine/manifest,
@@ -70,6 +73,8 @@ Status M1: `zrealizowane`.
 
 ## M3: Workflow + Docs + Wiki
 
+Status M3: `w toku` (2/3 issue zamkniete).
+
 ### Issue 7: Inicjalizacja i utrzymanie Wiki
 - Zakres:
   - utworzenie pierwszej strony wiki (`Home`),
@@ -77,6 +82,8 @@ Status M1: `zrealizowane`.
 - Done:
   - `/wiki` dziala bez przekierowania na strone repo,
   - wiki ma minimum 1 strone i sidebar.
+  
+Status: `w toku` (backend Wiki wymaga inicjalizacji pierwszej strony `Home`).
 
 ### Issue 8: Release checklist i changelog discipline
 - Zakres:
@@ -85,12 +92,16 @@ Status M1: `zrealizowane`.
 - Done:
   - kazdy release ma jednolity opis i jasny scope.
 
+Status: `zrealizowane`.
+
 ### Issue 9: Dokumentacja "2 komputery" + odzyskiwanie po awarii
 - Zakres:
   - dopisanie scenariuszy odzyskiwania (db/cache/lock),
   - szybki playbook "co robic po crashu".
 - Done:
   - instrukcja krok-po-kroku w `docs/03` lub nowym rozdziale.
+
+Status: `zrealizowane`.
 
 ## Kolejnosc realizacji (propozycja)
 
