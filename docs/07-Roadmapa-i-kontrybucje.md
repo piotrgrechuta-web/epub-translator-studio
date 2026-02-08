@@ -2,17 +2,17 @@
 
 ## 7.1. Priorytety techniczne
 
-1. Integralnosc EPUB po tlumaczeniu (tagi inline, encje, `&shy;`).
-2. Diff-aware retranslation zamiast pelnego rerunu ksiazki.
-3. Kontekst translacji i spojnosc encji/postaci.
-4. QA jezykowe pod redakcje polszczyzny.
+1. Memory-first translation: cache segmentow + reuse po hashu.
+2. Human-in-the-loop: pamiec zatwierdzonych decyzji redaktora.
+3. EPUB-aware segmentacja i integralnosc markup (`&shy;`, inline tags).
+4. Smart retranslation: diff-aware + semantic diff gate do recenzji.
 
 ## 7.2. Priorytety produktowe
 
-1. Workflow "tlumacz -> czytaj -> popraw -> wznow".
-2. Widoczny status projektu i etapow bez watpliwosci "co dalej".
-3. Spojnosc stylu miedzy tomami jednej serii.
-4. Lepsza dokumentacja onboardingowa i recovery.
+1. Mniejszy koszt API i krotszy czas przez agresywny reuse cache.
+2. Adaptacyjne podpowiedzi stylu/terminow z decyzji redaktora.
+3. Recenzja tylko zmian o realnej roznicy semantycznej.
+4. Spojnosc stylu miedzy tomami jednej serii (batch/library).
 
 ## 7.3. Jak zglaszac zmiany
 
@@ -58,10 +58,10 @@ Jesli projekt oszczedza czas:
 
 ## 7.8. Kolejne milestone'y (po M1-M3)
 
-1. `M4: Context-Aware Translation`
-2. `M5: Text Integrity + Diff-Retranslation`
-3. `M6: Polish QA + Live Reading Loop`
-4. `M7: Batch Library + Style Memory`
+1. `M4: Memory-First Translation Engine`
+2. `M5: EPUB-Aware Segmentation + Markup Integrity`
+3. `M6: Smart Retranslation + Semantic Diff QA`
+4. `M7: Series Style Memory + Batch Library`
 
 Zakres i kryteria `Done` sa utrzymywane w:
 - `docs/09-Backlog-do-uzgodnienia.md`

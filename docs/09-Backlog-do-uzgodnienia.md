@@ -4,10 +4,10 @@ Status:
 - `M1 wdrozone` w kodzie i dokumentacji (2026-02-08),
 - `M2 wdrozone` w kodzie i CI (2026-02-08),
 - `M3 w toku`: Issue 8 i 9 `zrealizowane`, Issue 7 `do domkniecia` (inicjalizacja Wiki backend),
-- `M4 plan zatwierdzony`: kontekst tlumaczenia + spojnosc postaci,
-- `M5 plan zatwierdzony`: ochrona tekstu (`&shy;`) + diff-aware retranslation,
-- `M6 plan zatwierdzony`: QA polszczyzny + tryb czytaj/tlumacz/wroc,
-- `M7 plan zatwierdzony`: batch library + pamiec stylu serii.
+- `M4 plan zatwierdzony`: memory-first translation (cache + decision memory + adaptive prompting),
+- `M5 plan zatwierdzony`: EPUB-aware segmentacja i integralnosc markup (`&shy;`, inline tags),
+- `M6 plan zatwierdzony`: diff-aware retranslation + semantic diff gate do recenzji,
+- `M7 plan zatwierdzony`: styl serii, batch library i opcjonalny tor LoRA/QLoRA.
 
 ## Cel
 
@@ -16,10 +16,10 @@ Zamienic roadmape na konkretne, mierzalne zadania z jasnym zakresem i kryteriami
 ## Aktywne milestone'y
 
 1. `M3: Workflow + Docs + Wiki (domkniecie)`
-2. `M4: Context-Aware Translation`
-3. `M5: Text Integrity + Diff-Retranslation`
-4. `M6: Polish QA + Live Reading Loop`
-5. `M7: Batch Library + Style Memory`
+2. `M4: Memory-First Translation Engine`
+3. `M5: EPUB-Aware Segmentation + Markup Integrity`
+4. `M6: Smart Retranslation + Semantic Diff QA`
+5. `M7: Series Style Memory + Batch Library`
 
 ## M1: UI Consistency + UX Telemetry
 
@@ -109,93 +109,109 @@ Status: `zrealizowane`.
 
 Status: `zrealizowane`.
 
-## M4: Context-Aware Translation
+## M4: Memory-First Translation Engine
 
 Status M4: `plan`.
 
-### Issue 10: Kontekst poza segmentem
+### Issue #26: Segment cache + hash reuse (book memory)
 - Zakres:
-  - przekazywanie okna kontekstu (poprzedni/nastepny segment, tytul rozdzialu) do promptu,
-  - konfiguracja dlugosci kontekstu per run.
+  - zapis `hash(segment) -> translation` na poziomie ksiazki,
+  - reuse juz przetlumaczonych segmentow bez ponownego kosztu API,
+  - raport cache hit/miss po runie.
 - Done:
-  - mniej bledow typu "kim jest she/he" w dialogach bez znacznikow speakera,
-  - testy parsera potwierdzaja brak regresji tagow inline.
+  - ponowny run tej samej ksiazki reuzywa gotowe segmenty,
+  - cache jest odporny na restart aplikacji,
+  - metryki cache sa widoczne w podsumowaniu runu.
 
-### Issue 11: Pamiec encji i spojnosci postaci
+### Issue #27: Human-in-the-loop decision memory + adaptive few-shot
 - Zakres:
-  - lekka pamiec encji (imiona, aliasy, relacje) na poziomie ksiazki,
-  - automatyczne flagi QA przy zmianie nazwy postaci bez uzasadnienia.
+  - zapamietywanie zatwierdzonych decyzji redaktora (`segment_hash -> approved_translation`),
+  - automatyczne budowanie few-shot kontekstu dla kolejnych segmentow tej samej ksiazki,
+  - priorytet decyzji redaktora nad surowym wynikiem modelu.
 - Done:
-  - raport niespojnosci nazw po runie,
-  - mozliwosc zatwierdzenia kanonicznej formy w UI.
+  - narzedzie podpowiada kolejne tlumaczenia na bazie zatwierdzonych fragmentow,
+  - decyzje redaktora sa trwale i wersjonowane,
+  - wzrost spojnosci terminow bez recznego glosariusza.
 
-## M5: Text Integrity + Diff-Retranslation
+## M5: EPUB-Aware Segmentation + Markup Integrity
 
 Status M5: `plan`.
 
-### Issue 12: Ochrona hyphenation i `&shy;`
+### Issue #28: EPUB-aware segmentacja (dialogi, cytaty, inline tags)
 - Zakres:
-  - zachowanie `&shy;`/nbsp i krytycznych encji typograficznych podczas translacji i redakcji,
-  - walidator integralnosci znakow specjalnych.
+  - segmentacja respektuje granice logiczne EPUB (dialogi, cytaty, naglowki),
+  - nie rozcina krytycznych struktur inline (`<i>`, `<b>`, `<a>`),
+  - testy regresji na trudnych fragmentach dialogowych.
 - Done:
-  - brak utraty `&shy;` po translacji,
-  - testy automatyczne porownuja liczbe i pozycje kluczowych encji.
+  - brak rozcietych dialogow i uszkodzen struktury XHTML po segmentacji,
+  - testy parsera przechodza dla przypadkow dialog/cytat/inline,
+  - output zachowuje poprawnosc renderingu.
 
-### Issue 13: Diff-aware retranslation
+### Issue #33: Ochrona `&shy;` i encji typograficznych
 - Zakres:
-  - retranslacja tylko zmienionych segmentow po poprawce zrodla,
-  - opcjonalna retranslacja sasiedztwa (N segmentow) dla spojnosci.
+  - zachowanie `&shy;`, `&nbsp;` i kluczowych encji podczas translacji/redakcji,
+  - walidator integralnosci encji przed/po runie,
+  - raport roznic encji do szybkiej kontroli.
 - Done:
-  - raport: `changed/reused/retranslated`,
-  - brak potrzeby pelnej retranslacji po drobnych poprawkach.
+  - brak utraty `&shy;` po runie,
+  - automatyczny test integralnosci encji przechodzi,
+  - brak regresji czytelnosci na malych ekranach czytnikow.
 
-## M6: Polish QA + Live Reading Loop
+## M6: Smart Retranslation + Semantic Diff QA
 
 Status M6: `plan`.
 
-### Issue 14: Walidacja polszczyzny specyficznej
+### Issue #29: Diff-aware retranslation po zmianie zrodla
 - Zakres:
-  - zestaw regulek QA (liczebniki, przypadki, kolokacje stylu literackiego),
-  - klasyfikacja findings: `info/warn/error`.
+  - wykrywanie zmienionych segmentow po edycji EPUB zrodlowego,
+  - retranslacja tylko zmienionych (plus opcjonalne sasiedztwo N),
+  - reuse cache/TM dla niezmienionych fragmentow.
 - Done:
-  - lista findings z podpowiedzia korekty,
-  - eksport raportu QA dla redakcji.
+  - raport `changed/reused/retranslated`,
+  - brak potrzeby pelnej retranslacji po drobnych poprawkach,
+  - skrocony czas runu dla malych zmian.
 
-### Issue 15: Tryb "tlumaczenie na zywo podczas czytania"
+### Issue #30: Semantic diff gate (embedding) dla recenzji
 - Zakres:
-  - workflow: tlumacz fragment -> czytaj na czytniku -> wznow od punktu,
-  - checkpointy per rozdzial i per run.
+  - porownanie semantyczne wersji tlumaczenia (embedding-based),
+  - oznaczanie "zmiana sensu" vs "zmiana kosmetyczna",
+  - priorytetyzacja segmentow do recenzji manualnej.
 - Done:
-  - wznowienie bez utraty historii i cache,
-  - w UI widac, ktore fragmenty sa "po lekturze" i "do poprawy".
+  - segmenty o niskiej roznicy semantycznej moga byc auto-accepted,
+  - segmenty o wysokiej roznicy trafiaja na liste recenzji,
+  - raport QA pokazuje progi i decyzje bramki semantycznej.
 
-## M7: Batch Library + Style Memory
+## M7: Series Style Memory + Batch Library
 
 Status M7: `plan`.
 
-### Issue 16: Profile stylu serii
+### Issue #31: Profile stylu serii (tone memory)
 - Zakres:
-  - profile stylu i tonu reuzywalne miedzy ksiazkami,
-  - mapowanie projektu do profilu stylu.
+  - profile stylu/tonu reuzywalne miedzy tomami,
+  - przypisanie projektu do profilu stylu,
+  - import/eksport i wersjonowanie profili.
 - Done:
-  - profil stylu mozna przypisac i eksportowac/importowac,
-  - nowy projekt moze dziedziczyc styl poprzednich tomow.
+  - ten sam profil mozna stosowac w wielu ksiazkach serii,
+  - profile sa latwe do backupu i przenoszenia,
+  - widoczna poprawa spojnosci stylu miedzy tomami.
 
-### Issue 17: Batch library z pamiecia stylu
+### Issue #32: Batch library + opcjonalny tor LoRA/QLoRA
 - Zakres:
-  - kolejkowanie wielu ksiazek ze wspolnym stylem i pamiecia encji,
-  - globalny panel postepu biblioteki + postep per ksiazka.
+  - batch processing wielu EPUB z jednym profilem stylu,
+  - zbiorczy raport jakosci/spojnosci dla calej serii,
+  - eksperymentalny tor eksportu danych pod lokalny fine-tuning (LoRA/QLoRA).
 - Done:
-  - uruchomienie wsadowe wielu EPUB w jednym runie,
-  - raport koncowy porownuje jakosc i spojnosc miedzy tomami.
+  - mozliwe uruchomienie wsadowe wielu ksiazek,
+  - raport koncowy jest czytelny per ksiazka i globalnie,
+  - dokumentacja oddziela tryb produkcyjny od eksperymentalnego fine-tuning.
 
 ## Kolejnosc realizacji (zaktualizowana)
 
 1. Domkniecie `M3 / Issue 7` (Wiki backend + Home + sidebar).
-2. `M5` (najszybszy zysk produkcyjny: `&shy;` + diff-aware).
-3. `M4` (kontekst i spojnosc postaci).
-4. `M6` (QA jezykowe + loop czytelniczy).
-5. `M7` (tryb serii i batch library).
+2. `M4` (memory-first: cache + decision memory + adaptive few-shot).
+3. `M5` (segmentacja EPUB + integralnosc markup).
+4. `M6` (diff-aware + semantic diff gate).
+5. `M7` (skalowanie na serie i batch + opcjonalny fine-tuning).
 
 ## Definicja publikacji milestone
 
