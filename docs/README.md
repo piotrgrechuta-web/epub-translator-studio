@@ -17,6 +17,7 @@ Uklad jest przygotowany tak, aby mozna go:
 7. [Roadmapa i kontrybucje](07-Roadmapa-i-kontrybucje.md)
 8. [Status UI i Wiki/Pages](08-Status-UI-i-Wiki.md)
 9. [Backlog i milestone](09-Backlog-do-uzgodnienia.md)
+10. [Series Style Memory - szkielet](10-Series-Style-Memory.md)
 
 ## Dokumenty zrodlowe
 

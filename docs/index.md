@@ -13,6 +13,7 @@ To jest strona startowa dla GitHub Pages (`/docs`).
 7. [Roadmapa i kontrybucje](07-Roadmapa-i-kontrybucje.md)
 8. [Status UI i Wiki/Pages](08-Status-UI-i-Wiki.md)
 9. [Backlog i kolejne etapy](09-Backlog-do-uzgodnienia.md)
+10. [Series Style Memory - szkielet](10-Series-Style-Memory.md)
 
 ## Zrodla
 

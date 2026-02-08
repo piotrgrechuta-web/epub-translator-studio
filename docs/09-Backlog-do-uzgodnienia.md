@@ -7,7 +7,7 @@ Status:
 - `M4 plan zatwierdzony`: memory-first translation (cache + decision memory + adaptive prompting),
 - `M5 plan zatwierdzony`: EPUB-aware segmentacja i integralnosc markup (`&shy;`, inline tags),
 - `M6 plan zatwierdzony`: diff-aware retranslation + semantic diff gate do recenzji,
-- `M7 plan zatwierdzony`: styl serii, batch library i opcjonalny tor LoRA/QLoRA.
+- `M7 w realizacji`: wdrozony szkielet serii (project->series, baza serii, manager terminow, merge glosariusza).
 
 ## Cel
 
@@ -183,7 +183,7 @@ Status M6: `plan`.
 
 ## M7: Series Style Memory + Batch Library
 
-Status M7: `plan`.
+Status M7: `w realizacji` (foundation deployed).
 
 ### Issue #31: Profile stylu serii (tone memory)
 - Zakres:
@@ -195,6 +195,17 @@ Status M7: `plan`.
   - profile sa latwe do backupu i przenoszenia,
   - widoczna poprawa spojnosci stylu miedzy tomami.
 
+Status:
+- `szkielet wdrozony`:
+1. projekty maja `series_id` i `volume_no`,
+2. autodetekcja serii z metadanych EPUB (`OPF`),
+3. osobna baza serii (`data/series/<slug>/series.db`),
+4. panel `Slownik serii` (approve/reject/manual add),
+5. merge slownika serii z glosariuszem projektu na etapie runu.
+- `do domkniecia`:
+1. UI/DB dla jawnych "style rules" i "lorebook" per seria,
+2. wersjonowanie profili stylu (diff + historia zmian).
+
 ### Issue #32: Batch library + opcjonalny tor LoRA/QLoRA
 - Zakres:
   - batch processing wielu EPUB z jednym profilem stylu,
@@ -205,13 +216,17 @@ Status M7: `plan`.
   - raport koncowy jest czytelny per ksiazka i globalnie,
   - dokumentacja oddziela tryb produkcyjny od eksperymentalnego fine-tuning.
 
+Status:
+- `plan` (brak wdrozenia wsadowego orchestratora biblioteki serii).
+
 ## Kolejnosc realizacji (zaktualizowana)
 
 1. Domkniecie `M3 / Issue 7` (Wiki backend + Home + sidebar).
-2. `M4` (memory-first: cache + decision memory + adaptive few-shot).
-3. `M5` (segmentacja EPUB + integralnosc markup).
-4. `M6` (diff-aware + semantic diff gate).
-5. `M7` (skalowanie na serie i batch + opcjonalny fine-tuning).
+2. Domkniecie `M7 / Issue 31` (style rules + lorebook + versioning).
+3. `M4` (memory-first: cache + decision memory + adaptive few-shot).
+4. `M5` (segmentacja EPUB + integralnosc markup).
+5. `M6` (diff-aware + semantic diff gate).
+6. `M7 / Issue 32` (skalowanie batch + opcjonalny fine-tuning).
 
 ## Definicja publikacji milestone
 

@@ -10,6 +10,9 @@ Keywords: `EPUB`, `translator`, `AI`, `Ollama`, `Google Gemini`, `QA`, `TM`, `Tk
 - Translation Memory (SQLite),
 - QA findings, workflow statusow i QA gate,
 - kolejka projektow (`pending`, `run all`),
+- przypisanie projektu do serii (manualne i autodetekcja z metadanych EPUB),
+- slownik serii (proposed/approved/rejected) + eksport glosariusza serii,
+- scalanie glosariusza projektu z zatwierdzonym slownikiem serii podczas runu,
 - narzedzia techniczne EPUB:
   - dodanie wizytowki,
   - usuniecie okladki lub grafik po regexie,
@@ -57,8 +60,13 @@ export GOOGLE_API_KEY="<TWOJ_KLUCZ>"
 - `start_horizon.py` - alias kompatybilnosci (horizon),
 - `studio_suite.py` - Studio Tools,
 - `project_db.py` - baza projektu, runy, QA, TM,
+- `series_store.py` - baza serii, terminy i eksport/scalanie glosariusza serii,
 - `runtime_core.py` - wspolna logika runtime (uzywana tez przez web backend),
 - `tlumacz_ollama.py` - silnik tlumaczenia.
+
+## Dane lokalne serii
+- `project-tkinter/data/series/<series-slug>/series.db` - lokalna baza terminow i decyzji serii.
+- `project-tkinter/data/series/<series-slug>/generated/approved_glossary.txt` - eksport zatwierdzonego slownika serii.
 
 ## Dokumentacja
 - pelny manual uzytkownika: `MANUAL_PL.md`

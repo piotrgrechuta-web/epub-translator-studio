@@ -91,6 +91,7 @@ export GOOGLE_API_KEY="<YOUR_KEY>"
 - docs index (Wiki/Pages ready): `docs/README.md`
 - online docs portal: `https://piotr-grechuta.github.io/epub-translator-studio/`
 - where progress/UI/Wiki are visible: `docs/08-Status-UI-i-Wiki.md`
+- series memory technical skeleton: `docs/10-Series-Style-Memory.md`
 
 ## Support
 - Sponsor: https://github.com/sponsors/Piotr-Grechuta

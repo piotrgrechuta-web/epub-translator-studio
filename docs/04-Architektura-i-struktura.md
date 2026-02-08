@@ -15,7 +15,8 @@ Kluczowe obszary:
 - `app_gui_horizon.py` - wariant Horizon,
 - `runtime_core.py` - wspolna logika runtime,
 - `tlumacz_ollama.py` - mechanika tlumaczenia,
-- `project_db.py` - baza i metadane projektowe.
+- `project_db.py` - baza i metadane projektowe,
+- `series_store.py` - per-seria magazyn terminow/decyzji i generowanie slownikow serii.
 
 ## 4.3. Przeplyw danych
 
@@ -26,12 +27,20 @@ Typowy przeplyw:
 4. QA i walidacja raportuja wynik.
 5. Artefakty trafiaja do output/debug.
 
+Nowy przeplyw serii:
+1. Projekt moze miec `series_id` i `volume_no`.
+2. UI laduje/zapisuje serie z `project_db.py`.
+3. Dla aktywnej serii `series_store.py` buduje scalony slownik runu.
+4. Po udanym runie terminy z TM projektu moga byc dopisane jako `proposed` w bazie serii.
+5. Operator zatwierdza terminy w panelu `Slownik serii`.
+
 ## 4.4. Warstwy odpowiedzialnosci
 
 - UI: input, konfiguracja, status.
 - Runtime: walidacja opcji i budowanie komend.
 - Engine: wykonanie translacji.
 - QA: kontrole jakosci i bramki.
+- Series memory: terminologia i decyzje serii (`data/series/<slug>/series.db`).
 
 ## 4.5. Co zmieniac ostroznie
 
@@ -39,6 +48,7 @@ Typowy przeplyw:
 - sciezki i nazwy plikow cache/glossary,
 - operacje na lokalnych bazach i lockach,
 - zachowanie retry/backoff.
+- migracje schematu SQLite (w tym samonaprawa brakujacych kolumn).
 
 ## 4.6. Miejsca do rozwoju
 
@@ -46,3 +56,4 @@ Typowy przeplyw:
 - mocniejsze typowanie i walidacja kontraktow,
 - automatyzacja release notes,
 - telemetryjny health-check offline/online providerow.
+- rozszerzenie `series_store.py` o lorebook i reguly stylu per seria.

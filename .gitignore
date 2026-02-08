@@ -15,10 +15,13 @@ debug/
 # Local runtime DB files
 translator_studio.db
 translator_studio.db-*
+translator_studio.db.bak-*
 *.db.init.lock
 project-tkinter/translator_studio.db
 project-tkinter/translator_studio.db-*
+project-tkinter/translator_studio.db.bak-*
 project-tkinter/translator_studio.db.init.lock
+project-tkinter/data/
 
 # Local app/session settings
 .last_session.json

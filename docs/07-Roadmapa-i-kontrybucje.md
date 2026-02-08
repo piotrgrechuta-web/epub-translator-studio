@@ -1,5 +1,13 @@
 # 07. Roadmapa i kontrybucje
 
+## 7.0. Status wdrozenia (2026-02-08)
+
+- `M1`: zrealizowane.
+- `M2`: zrealizowane.
+- `M3`: w toku (Wiki backend do domkniecia).
+- `M7`: uruchomiony szkielet techniczny (seria + slownik serii + auto-detekcja + merge glosariusza).
+- `M4-M6`: plan zatwierdzony, wdrozenie po domknieciu M3.
+
 ## 7.1. Priorytety techniczne
 
 1. Memory-first translation: cache segmentow + reuse po hashu.
@@ -12,7 +20,7 @@
 1. Mniejszy koszt API i krotszy czas przez agresywny reuse cache.
 2. Adaptacyjne podpowiedzi stylu/terminow z decyzji redaktora.
 3. Recenzja tylko zmian o realnej roznicy semantycznej.
-4. Spojnosc stylu miedzy tomami jednej serii (batch/library).
+4. Spojnosc stylu miedzy tomami jednej serii (batch/library) - fundament techniczny juz dodany.
 
 ## 7.3. Jak zglaszac zmiany
 
@@ -61,7 +69,7 @@ Jesli projekt oszczedza czas:
 1. `M4: Memory-First Translation Engine`
 2. `M5: EPUB-Aware Segmentation + Markup Integrity`
 3. `M6: Smart Retranslation + Semantic Diff QA`
-4. `M7: Series Style Memory + Batch Library`
+4. `M7: Series Style Memory + Batch Library` (foundation active, kolejne incrementy w backlogu)
 
 Zakres i kryteria `Done` sa utrzymywane w:
 - `docs/09-Backlog-do-uzgodnienia.md`

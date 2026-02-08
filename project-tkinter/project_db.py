@@ -7,9 +7,11 @@ import json
 import hashlib
 import logging
 import os
+import re
 import sqlite3
 import shutil
 import time
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,12 +22,20 @@ else:
 
 
 DB_FILE = "translator_studio.db"
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 LOG = logging.getLogger(__name__)
 
 
 def _now_ts() -> int:
     return int(time.time())
+
+
+def _slugify_name(value: str) -> str:
+    text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
+    text = text.lower().strip()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    text = text.strip("-")
+    return text or "series"
 
 
 def _acquire_init_lock(lock_path: Path, timeout_s: float = 30.0):
@@ -121,9 +131,24 @@ class ProjectDB:
         )
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS series (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              slug TEXT NOT NULL UNIQUE,
+              name TEXT NOT NULL UNIQUE,
+              source TEXT NOT NULL DEFAULT 'manual',
+              notes TEXT NOT NULL DEFAULT '',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS projects (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               name TEXT NOT NULL UNIQUE,
+              series_id INTEGER,
+              volume_no REAL,
               input_epub TEXT NOT NULL DEFAULT '',
               output_translate_epub TEXT NOT NULL DEFAULT '',
               output_edit_epub TEXT NOT NULL DEFAULT '',
@@ -141,6 +166,7 @@ class ProjectDB:
               notes TEXT NOT NULL DEFAULT '',
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL,
+              FOREIGN KEY(series_id) REFERENCES series(id) ON DELETE SET NULL,
               FOREIGN KEY(profile_translate_id) REFERENCES profiles(id) ON DELETE SET NULL,
               FOREIGN KEY(profile_edit_id) REFERENCES profiles(id) ON DELETE SET NULL
             )
@@ -182,6 +208,10 @@ class ProjectDB:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tm_source_hash ON tm_segments(source_hash)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tm_src_len ON tm_segments(LENGTH(source_text))")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_runs_project_started ON runs(project_id, started_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_series_name ON series(name)")
+        project_cols = {str(r["name"]) for r in self.conn.execute("PRAGMA table_info(projects)").fetchall()}
+        if "series_id" in project_cols:
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_projects_series ON projects(series_id, updated_at DESC)")
 
         version = self._meta_get("schema_version")
         if version is None:
@@ -218,6 +248,7 @@ class ProjectDB:
             self._meta_set("schema_version", "1")
             self.conn.commit()
         if current >= SCHEMA_VERSION:
+            self._ensure_schema_integrity()
             return
         _ = self._backup_before_migration(current, SCHEMA_VERSION)
         cur = self.conn.cursor()
@@ -313,8 +344,128 @@ class ProjectDB:
                 current = 7
                 self._meta_set("schema_version", str(current))
                 self.conn.commit()
+            elif current == 7:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS series (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      slug TEXT NOT NULL UNIQUE,
+                      name TEXT NOT NULL UNIQUE,
+                      source TEXT NOT NULL DEFAULT 'manual',
+                      notes TEXT NOT NULL DEFAULT '',
+                      created_at INTEGER NOT NULL,
+                      updated_at INTEGER NOT NULL
+                    )
+                    """
+                )
+                cols = {str(r["name"]) for r in self.conn.execute("PRAGMA table_info(projects)").fetchall()}
+                if "series_id" not in cols:
+                    cur.execute("ALTER TABLE projects ADD COLUMN series_id INTEGER")
+                if "volume_no" not in cols:
+                    cur.execute("ALTER TABLE projects ADD COLUMN volume_no REAL")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_series_name ON series(name)")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_projects_series ON projects(series_id, updated_at DESC)")
+                current = 8
+                self._meta_set("schema_version", str(current))
+                self.conn.commit()
             else:
-                raise RuntimeError(f"Nieznana ścieżka migracji z wersji {current}")
+                raise RuntimeError(f"Nieznana sciezka migracji z wersji {current}")
+        self._ensure_schema_integrity()
+
+    def _ensure_schema_integrity(self) -> None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_events (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              event_type TEXT NOT NULL,
+              payload_json TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS qa_findings (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              project_id INTEGER NOT NULL,
+              step TEXT NOT NULL,
+              chapter_path TEXT NOT NULL,
+              segment_index INTEGER NOT NULL,
+              segment_id TEXT NOT NULL DEFAULT '',
+              severity TEXT NOT NULL,
+              rule_code TEXT NOT NULL,
+              message TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'open',
+              assignee TEXT NOT NULL DEFAULT '',
+              due_at INTEGER,
+              escalated_at INTEGER,
+              escalation_status TEXT NOT NULL DEFAULT 'none',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS qa_reviews (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              project_id INTEGER NOT NULL,
+              step TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'pending',
+              approver TEXT NOT NULL DEFAULT '',
+              notes TEXT NOT NULL DEFAULT '',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS series (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              slug TEXT NOT NULL UNIQUE,
+              name TEXT NOT NULL UNIQUE,
+              source TEXT NOT NULL DEFAULT 'manual',
+              notes TEXT NOT NULL DEFAULT '',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            )
+            """
+        )
+
+        project_cols = {str(r["name"]) for r in self.conn.execute("PRAGMA table_info(projects)").fetchall()}
+        if "source_lang" not in project_cols:
+            cur.execute("ALTER TABLE projects ADD COLUMN source_lang TEXT NOT NULL DEFAULT 'en'")
+        if "target_lang" not in project_cols:
+            cur.execute("ALTER TABLE projects ADD COLUMN target_lang TEXT NOT NULL DEFAULT 'pl'")
+        if "series_id" not in project_cols:
+            cur.execute("ALTER TABLE projects ADD COLUMN series_id INTEGER")
+        if "volume_no" not in project_cols:
+            cur.execute("ALTER TABLE projects ADD COLUMN volume_no REAL")
+
+        finding_cols = {str(r["name"]) for r in self.conn.execute("PRAGMA table_info(qa_findings)").fetchall()}
+        if "segment_id" not in finding_cols:
+            cur.execute("ALTER TABLE qa_findings ADD COLUMN segment_id TEXT NOT NULL DEFAULT ''")
+        if "due_at" not in finding_cols:
+            cur.execute("ALTER TABLE qa_findings ADD COLUMN due_at INTEGER")
+        if "escalated_at" not in finding_cols:
+            cur.execute("ALTER TABLE qa_findings ADD COLUMN escalated_at INTEGER")
+        if "escalation_status" not in finding_cols:
+            cur.execute("ALTER TABLE qa_findings ADD COLUMN escalation_status TEXT NOT NULL DEFAULT 'none'")
+
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_created ON audit_events(created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_project_status ON qa_findings(project_id, status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_project_step ON qa_findings(project_id, step)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_project_segment ON qa_findings(project_id, step, chapter_path, segment_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_due ON qa_findings(project_id, due_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_reviews_project_step ON qa_reviews(project_id, step, updated_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_series_name ON series(name)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_projects_series ON projects(series_id, updated_at DESC)")
+        self._meta_set("schema_version", str(SCHEMA_VERSION))
+        self.conn.commit()
 
     def log_audit_event(self, event_type: str, payload: Dict[str, Any]) -> None:
         try:
@@ -645,8 +796,64 @@ class ProjectDB:
         self.conn.execute("DELETE FROM profiles WHERE id = ? AND is_builtin = 0", (profile_id,))
         self.conn.commit()
 
+    def _series_slug_exists(self, slug: str) -> bool:
+        row = self.conn.execute("SELECT 1 FROM series WHERE slug = ?", (slug,)).fetchone()
+        return row is not None
+
+    def _next_series_slug(self, name: str) -> str:
+        base = _slugify_name(name)
+        slug = base
+        i = 2
+        while self._series_slug_exists(slug):
+            slug = f"{base}-{i}"
+            i += 1
+        return slug
+
+    def list_series(self) -> List[sqlite3.Row]:
+        return list(self.conn.execute("SELECT * FROM series ORDER BY name COLLATE NOCASE"))
+
+    def get_series(self, series_id: int) -> Optional[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM series WHERE id = ?", (series_id,)).fetchone()
+
+    def get_series_by_slug(self, slug: str) -> Optional[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM series WHERE slug = ?", (slug,)).fetchone()
+
+    def create_series(self, name: str, *, source: str = "manual", notes: str = "") -> int:
+        clean_name = str(name or "").strip()
+        if not clean_name:
+            raise ValueError("Series name is required")
+        now = _now_ts()
+        slug = self._next_series_slug(clean_name)
+        cur = self.conn.execute(
+            """
+            INSERT INTO series(slug, name, source, notes, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (slug, clean_name, str(source or "manual"), str(notes or ""), now, now),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def ensure_series(self, name: str, *, source: str = "manual", notes: str = "") -> int:
+        clean_name = str(name or "").strip()
+        if not clean_name:
+            raise ValueError("Series name is required")
+        row = self.conn.execute("SELECT id FROM series WHERE LOWER(name) = LOWER(?)", (clean_name,)).fetchone()
+        if row:
+            return int(row["id"])
+        return self.create_series(clean_name, source=source, notes=notes)
+
     def list_projects(self) -> List[sqlite3.Row]:
-        return list(self.conn.execute("SELECT * FROM projects ORDER BY updated_at DESC, id DESC"))
+        return list(
+            self.conn.execute(
+                """
+                SELECT p.*, s.name AS series_name, s.slug AS series_slug
+                FROM projects p
+                LEFT JOIN series s ON s.id = p.series_id
+                ORDER BY p.updated_at DESC, p.id DESC
+                """
+            )
+        )
 
     @staticmethod
     def _stage_record(run: Optional[sqlite3.Row]) -> Dict[str, Any]:
@@ -725,6 +932,7 @@ class ProjectDB:
             next_action = self._next_action(str(project.get("status") or "idle"), str(project.get("active_step") or "translate"), tr, ed)
             item = dict(project)
             item["book"] = book
+            item["series"] = str(project.get("series_name") or "")
             item["translate"] = tr
             item["edit"] = ed
             item["next_action"] = next_action
@@ -744,13 +952,27 @@ class ProjectDB:
         placeholders = ",".join(["?"] * len(statuses))
         return list(
             self.conn.execute(
-                f"SELECT * FROM projects WHERE status IN ({placeholders}) ORDER BY updated_at DESC, id DESC",
+                f"""
+                SELECT p.*, s.name AS series_name, s.slug AS series_slug
+                FROM projects p
+                LEFT JOIN series s ON s.id = p.series_id
+                WHERE p.status IN ({placeholders})
+                ORDER BY p.updated_at DESC, p.id DESC
+                """,
                 statuses,
             )
         )
 
     def get_project(self, project_id: int) -> Optional[sqlite3.Row]:
-        return self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        return self.conn.execute(
+            """
+            SELECT p.*, s.name AS series_name, s.slug AS series_slug
+            FROM projects p
+            LEFT JOIN series s ON s.id = p.series_id
+            WHERE p.id = ?
+            """,
+            (project_id,),
+        ).fetchone()
 
     def create_project(self, name: str, values: Optional[Dict[str, Any]] = None) -> int:
         values = values or {}
@@ -758,13 +980,15 @@ class ProjectDB:
         cur = self.conn.execute(
             """
             INSERT INTO projects(
-              name, input_epub, output_translate_epub, output_edit_epub,
+              name, series_id, volume_no, input_epub, output_translate_epub, output_edit_epub,
               prompt_translate, prompt_edit, glossary_path, cache_translate_path, cache_edit_path,
               profile_translate_id, profile_edit_id, source_lang, target_lang, active_step, status, notes, created_at, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
+                values.get("series_id"),
+                values.get("volume_no"),
                 str(values.get("input_epub", "")),
                 str(values.get("output_translate_epub", "")),
                 str(values.get("output_edit_epub", "")),
@@ -879,6 +1103,21 @@ class ProjectDB:
             )
         )
 
+    def list_tm_segments(self, project_id: Optional[int] = None, limit: int = 5000) -> List[sqlite3.Row]:
+        if project_id is None:
+            return list(
+                self.conn.execute(
+                    "SELECT * FROM tm_segments ORDER BY created_at DESC LIMIT ?",
+                    (int(limit),),
+                )
+            )
+        return list(
+            self.conn.execute(
+                "SELECT * FROM tm_segments WHERE project_id = ? ORDER BY created_at DESC LIMIT ?",
+                (project_id, int(limit)),
+            )
+        )
+
     def export_project(self, project_id: int) -> Optional[Dict[str, Any]]:
         row = self.get_project(project_id)
         if row is None:
@@ -904,7 +1143,7 @@ class ProjectDB:
     def import_project(self, payload: Dict[str, Any]) -> int:
         project = payload.get("project") if isinstance(payload, dict) else None
         if not isinstance(project, dict):
-            raise ValueError("Nieprawidłowy payload projektu.")
+            raise ValueError("NieprawidĹ‚owy payload projektu.")
         base_name = str(project.get("name", "Imported project")).strip() or "Imported project"
         name = base_name
         i = 2
@@ -912,7 +1151,31 @@ class ProjectDB:
             name = f"{base_name} ({i})"
             i += 1
 
+        series_id: Optional[int] = None
+        series_name = str(project.get("series_name", "")).strip()
+        series_slug = str(project.get("series_slug", "")).strip()
+        if series_name:
+            try:
+                series_id = self.ensure_series(series_name, source="import")
+            except Exception:
+                series_id = None
+        raw_series_id = project.get("series_id")
+        if series_id is None and raw_series_id is not None:
+            try:
+                existing_series = self.get_series(int(raw_series_id))
+                if existing_series is not None:
+                    series_id = int(existing_series["id"])
+                elif series_name:
+                    series_id = self.ensure_series(series_name, source="import")
+                elif series_slug:
+                    row = self.get_series_by_slug(series_slug)
+                    series_id = int(row["id"]) if row else None
+            except Exception:
+                series_id = None
+
         vals = {
+            "series_id": series_id,
+            "volume_no": project.get("volume_no"),
             "input_epub": str(project.get("input_epub", "")),
             "output_translate_epub": str(project.get("output_translate_epub", "")),
             "output_edit_epub": str(project.get("output_edit_epub", "")),
@@ -1071,3 +1334,6 @@ class ProjectDB:
         self.set_setting("active_project_id", project_id)
         self.set_setting("legacy_imported_v1", True)
         return project_id
+
+
+

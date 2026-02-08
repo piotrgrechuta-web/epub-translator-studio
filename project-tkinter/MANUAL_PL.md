@@ -32,6 +32,9 @@ Interfejs ma 2 poziomy:
 
 Najwazniejsze elementy danych:
 - `translator_studio.db` - baza SQLite z projektami, historiami runow, QA, TM.
+- `data/series/<series-slug>/series.db` - lokalna baza serii (terminy, decyzje, lore/styl).
+- `data/series/<series-slug>/generated/approved_glossary.txt` - eksport zatwierdzonego slownika serii.
+- `data/series/<series-slug>/generated/merged_glossary_project_<id>.txt` - slownik uzyty w konkretnym runie (seria + projekt).
 - `events/app_events.jsonl` - dziennik zdarzen aplikacji.
 - pliki wynikowe EPUB - np. `book_pl.epub`, `book_pl_redakcja.epub`.
 - cache segmentow - np. `cache_book.jsonl`.
@@ -120,6 +123,16 @@ Gate decyduje:
 TM to baza segmentow zrodlo->cel.
 Wplywa na powtarzalne fragmenty i spojnosc tlumaczenia.
 
+### 4.6 Seria i slownik serii
+Seria to warstwa nad pojedynczym projektem:
+- projekt mozna przypisac do serii recznie lub przez autodetekcje metadanych EPUB,
+- seria ma osobny slownik terminow (statusy: `proposed`, `approved`, `rejected`),
+- przy wlaczonym `Uzyj slownika` run korzysta ze scalonego slownika:
+1. zatwierdzone terminy serii,
+2. lokalny slownik projektu (jesli podany).
+
+Po udanym runie aplikacja moze dopisac propozycje terminow serii na podstawie TM projektu.
+
 ## 5. Glowny panel: co, po co, jak, wplyw
 
 ## 5.1 Sekcja "Projekt i profile"
@@ -164,6 +177,35 @@ Wplywa na powtarzalne fragmenty i spojnosc tlumaczenia.
 - Wplyw:
 1. tworzy nowy projekt (nazwa z sufiksem, jesli kolizja),
 2. importuje runy, QA i TM do bazy.
+
+### `Seria` + `Tom`
+- Po co: utrzymanie spojnosci terminow i stylu miedzy ksiazkami tej samej serii.
+- Jak:
+1. wybierz serie z listy albo zostaw `brak serii`,
+2. opcjonalnie ustaw numer tomu (`Tom`).
+- Wplyw: zapisuje `series_id` i `volume_no` w tabeli `projects`.
+
+### `Nowa seria`
+- Po co: szybkie utworzenie serii bez wychodzenia z glownego panelu.
+- Jak: klik `Nowa seria`, wpisz nazwe.
+- Wplyw:
+1. tworzy rekord w tabeli `series` (`translator_studio.db`),
+2. inicjalizuje lokalny magazyn `data/series/<slug>/series.db`.
+
+### `Auto z EPUB`
+- Po co: automatyczne podpowiedzenie serii na podstawie metadanych EPUB (`OPF`).
+- Jak: po ustawieniu `Wejsciowy EPUB` kliknij `Auto z EPUB` i potwierdz przypisanie.
+- Wplyw: przypisuje serie do projektu i opcjonalnie ustawia `Tom`.
+
+### `Slownik serii`
+- Po co: zarzadzanie terminami serii i eksport zatwierdzonego glosariusza.
+- Jak:
+1. wybierz serie,
+2. klik `Slownik serii`,
+3. zatwierdzaj/odrzucaj terminy lub dodawaj recznie.
+- Wplyw:
+1. aktualizuje `data/series/<slug>/series.db`,
+2. moze wyeksportowac `approved_glossary.txt`.
 
 ## 5.2 Sekcja "Pliki i tryb"
 
@@ -552,6 +594,9 @@ Typowy flow:
 |---|---|---|
 | `Zapisz` | nic | `projects` update |
 | `Nowy` | nic | nowy rekord `projects` |
+| `Nowa seria` | tworzy `data/series/<slug>/series.db` | nowy rekord `series` |
+| `Auto z EPUB` | nic | przypisuje `projects.series_id` i opcjonalnie `projects.volume_no` |
+| `Slownik serii` (approve/reject/add) | aktualizuje pliki pod `data/series/<slug>/` | zapis terminow/decydji w bazie serii (osobny SQLite) |
 | `Kolejkuj` | nic | status `projects` -> `pending` |
 | `Start translacji` | zapis output EPUB/cache (wg procesu) | nowy `runs`, status projektu |
 | `Waliduj EPUB` | nic (raport w logu) | nowy `runs` (step=`validate`) |
