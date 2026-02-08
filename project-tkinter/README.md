@@ -1,31 +1,35 @@
 # EPUB Translator Studio (Tkinter)
 
-Główny wariant aplikacji desktop do pracy z EPUB.
+Glowny wariant aplikacji desktop do pracy z EPUB.
 
 Keywords: `EPUB`, `translator`, `AI`, `Ollama`, `Google Gemini`, `QA`, `TM`, `Tkinter`.
 
 ## Funkcje
-- tłumaczenie EPUB i redakcja (`translate` / `edit`),
+- tlumaczenie EPUB i redakcja (`translate` / `edit`),
 - walidacja EPUB,
 - Translation Memory (SQLite),
-- QA findings, workflow statusów i QA gate,
-- kolejka projektów (`pending`, `run all`),
-- narzędzia techniczne EPUB:
-  - dodanie wizytówki,
-  - usunięcie okładki lub grafik po regexie,
-  - edycja tekstu segmentów.
+- QA findings, workflow statusow i QA gate,
+- kolejka projektow (`pending`, `run all`),
+- narzedzia techniczne EPUB:
+  - dodanie wizytowki,
+  - usuniecie okladki lub grafik po regexie,
+  - edycja tekstu segmentow.
 
 ## Uruchomienie
 W katalogu `project-tkinter`:
 
 ```powershell
-python start.py
+python app_main.py --variant classic
 ```
 
 Wariant motywu:
 ```powershell
-python start_horizon.py
+python app_main.py --variant horizon
 ```
+
+Aliasy kompatybilnosci (legacy):
+- `python start.py`
+- `python start_horizon.py`
 
 ## Pierwsze uruchomienie (wymagane)
 - Lokalnie (Ollama): zainstalowana Ollama + co najmniej jeden model.
@@ -45,15 +49,19 @@ ollama pull llama3.1:8b
 export GOOGLE_API_KEY="<TWOJ_KLUCZ>"
 ```
 
-## Najważniejsze pliki
-- `start.py` - główne GUI,
+## Najwazniejsze pliki
+- `app_main.py` - launcher wariantow GUI (`classic`/`horizon`),
+- `app_gui_classic.py` - glowne GUI,
+- `app_gui_horizon.py` - wariant Horizon,
+- `start.py` - alias kompatybilnosci (classic),
+- `start_horizon.py` - alias kompatybilnosci (horizon),
 - `studio_suite.py` - Studio Tools,
 - `project_db.py` - baza projektu, runy, QA, TM,
-- `runtime_core.py` - wspólna logika runtime (używana też przez web backend),
-- `tlumacz_ollama.py` - silnik tłumaczenia.
+- `runtime_core.py` - wspolna logika runtime (uzywana tez przez web backend),
+- `tlumacz_ollama.py` - silnik tlumaczenia.
 
 ## Dokumentacja
-- pełny manual użytkownika: `MANUAL_PL.md`
+- pelny manual uzytkownika: `MANUAL_PL.md`
 - workflow Git na wielu komputerach: `GIT_WORKFLOW_PL.md`
 
 ## Wymagania AI (konieczne)

@@ -32,7 +32,7 @@ Format jest spojny z wariantem Tkinter:
 
 ## Poprawki UX wdrozone w aplikacjach
 
-Wariant Tkinter (`start.py`, `start_horizon.py`, `studio_suite.py`):
+Wariant Tkinter (`app_gui_classic.py`, `app_gui_horizon.py`, `studio_suite.py`):
 - glowne okno i okna narzedzi startuja w trybie maksymalnym (z dynamicznymi granicami),
 - po zmniejszeniu okna dostepne sa paski przewijania (pion/poziom),
 - menu kontekstowe pod prawym przyciskiem myszy w polach edycyjnych:

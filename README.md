@@ -35,8 +35,12 @@ KEYWORDS: `EPUB translator`, `EPUB translation tool`, `AI translation`, `ebook t
 ### Tkinter (main)
 ```powershell
 cd project-tkinter
-python start.py
+python app_main.py --variant classic
 ```
+
+Compatibility aliases still available:
+- `python start.py`
+- `python start_horizon.py`
 
 ### Web desktop
 ```powershell

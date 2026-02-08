@@ -30,7 +30,7 @@ git pull
 cd project-tkinter
 python -m venv .venv
 . .\.venv\Scripts\Activate.ps1
-python start.py
+python app_main.py --variant classic
 ```
 
 ## Web desktop (Electron + FastAPI)

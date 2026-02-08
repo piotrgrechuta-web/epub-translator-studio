@@ -25,7 +25,7 @@ Przeplyw pracy (najczesciej):
 5. robisz walidacje EPUB.
 
 Interfejs ma 2 poziomy:
-- glowny panel (`start.py`),
+- glowny panel (`app_gui_classic.py` uruchamiany przez `app_main.py`),
 - panel rozszerzony `Studio Tools (12)` (faktycznie 10 zakladek).
 
 ## 2. Co program zapisuje i gdzie
@@ -57,7 +57,7 @@ cd C:\Users\Public\epu2pl\project-tkinter
 
 2. Uruchom GUI:
 ```powershell
-python start.py
+python app_main.py --variant classic
 ```
 
 3. W panelu:
@@ -458,7 +458,11 @@ Po co:
 
 `Create`:
 - tworzy ZIP z kluczowymi plikami:
-  - `start.py`
+  - `app_main.py`
+  - `app_gui_classic.py`
+  - `app_gui_horizon.py`
+  - `start.py` (alias kompatybilnosci)
+  - `start_horizon.py` (alias kompatybilnosci)
   - `tlumacz_ollama.py`
   - `project_db.py`
   - `epub_enhancer.py`

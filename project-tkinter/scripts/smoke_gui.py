@@ -19,7 +19,7 @@ def main() -> int:
         return 0
 
     try:
-        from start import TranslatorGUI
+        from app_gui_classic import TranslatorGUI
     except Exception as e:
         print(f"FAIL import TranslatorGUI: {e}")
         return 2

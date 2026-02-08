@@ -710,7 +710,18 @@ class StudioSuiteWindow:
     def _snap_create(self) -> None:
         p = self._snap_dir() / f"snapshot_{time.strftime('%Y%m%d_%H%M%S')}.zip"
         with zipfile.ZipFile(p, "w") as z:
-            for n in ["start.py", "tlumacz_ollama.py", "project_db.py", "epub_enhancer.py", "studio_suite.py", "translator_studio.db"]:
+            for n in [
+                "app_main.py",
+                "app_gui_classic.py",
+                "app_gui_horizon.py",
+                "start.py",
+                "start_horizon.py",
+                "tlumacz_ollama.py",
+                "project_db.py",
+                "epub_enhancer.py",
+                "studio_suite.py",
+                "translator_studio.db",
+            ]:
                 f = self.gui.workdir / n
                 if f.exists(): z.write(f, arcname=f.name)
         self._snap_refresh()

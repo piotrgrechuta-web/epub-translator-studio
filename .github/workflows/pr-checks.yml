@@ -42,7 +42,11 @@ jobs:
 
       - name: Entry-point syntax smoke
         run: |
+          python -m py_compile project-tkinter/app_main.py
+          python -m py_compile project-tkinter/app_gui_classic.py
+          python -m py_compile project-tkinter/app_gui_horizon.py
           python -m py_compile project-tkinter/start.py
+          python -m py_compile project-tkinter/start_horizon.py
           python -m py_compile project-web-desktop/backend/app.py
 
   desktop-manifest-check:

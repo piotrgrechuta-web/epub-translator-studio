@@ -31,8 +31,12 @@ KEYWORDS: `tlumacz EPUB`, `narzedzie do tlumaczenia EPUB`, `tlumaczenie AI`, `tl
 ### Tkinter (glowny)
 ```powershell
 cd project-tkinter
-python start.py
+python app_main.py --variant classic
 ```
+
+Aliasy kompatybilnosci nadal dzialaja:
+- `python start.py`
+- `python start_horizon.py`
 
 ### Web desktop
 ```powershell

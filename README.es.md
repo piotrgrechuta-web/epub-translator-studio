@@ -24,7 +24,7 @@ KEYWORDS: `traductor EPUB`, `herramienta de traduccion EPUB`, `traduccion con IA
 ### Tkinter
 ```powershell
 cd project-tkinter
-python start.py
+python app_main.py --variant classic
 ```
 
 ### Web Desktop

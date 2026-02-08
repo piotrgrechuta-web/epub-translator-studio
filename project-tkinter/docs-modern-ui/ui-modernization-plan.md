@@ -8,7 +8,7 @@
 
 Zrobione:
 - dodano wspolny modul stylu `project-tkinter/ui_style.py`,
-- `start.py` i `start_horizon.py` korzystaja ze wspolnych tokenow i stylow.
+- `app_gui_classic.py` i `app_gui_horizon.py` korzystaja ze wspolnych tokenow i stylow.
 
 ## Etap 2: Layout
 - [x] Ujednolicic grid i marginesy kart.

@@ -13,7 +13,9 @@ Dodatkowo:
 ## 4.2. Tkinter
 
 Kluczowe obszary:
-- `start.py` - glowny UI i orchestracja,
+- `app_main.py` - launcher wariantow GUI (`classic`/`horizon`),
+- `app_gui_classic.py` - glowny UI i orchestracja,
+- `app_gui_horizon.py` - wariant Horizon,
 - `runtime_core.py` - wspolna logika runtime,
 - `tlumacz_ollama.py` - mechanika tlumaczenia,
 - `project_db.py` - baza i metadane projektowe.
