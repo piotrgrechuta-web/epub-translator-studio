@@ -43,8 +43,9 @@ jobs:
           python -m py_compile project-tkinter/app_main.py
           python -m py_compile project-tkinter/app_gui_classic.py
           python -m py_compile project-tkinter/app_gui_horizon.py
-          python -m py_compile project-tkinter/start.py
-          python -m py_compile project-tkinter/start_horizon.py
+          python -m py_compile project-tkinter/launcher_classic.py
+          python -m py_compile project-tkinter/launcher_horizon.py
+          python -m py_compile project-tkinter/translation_engine.py
 
       - name: Unit tests (EPUB parser)
         run: |

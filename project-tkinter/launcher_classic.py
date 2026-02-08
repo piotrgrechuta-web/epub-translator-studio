@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-# Backward-compatible entrypoint. Preferred module: app_gui_classic.py
+# Classic GUI launcher entrypoint.
 from app_gui_classic import APP_TITLE, TextEditorWindow, TranslatorGUI, main as _classic_main
 
 __all__ = ["APP_TITLE", "TranslatorGUI", "TextEditorWindow", "main"]

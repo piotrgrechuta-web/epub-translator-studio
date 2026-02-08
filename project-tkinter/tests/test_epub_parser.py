@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tlumacz_ollama import (  # noqa: E402
+from translation_engine import (  # noqa: E402
     XHTML_NS,
     _xpath_translatable,
     find_opf_path,

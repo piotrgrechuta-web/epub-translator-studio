@@ -32,9 +32,9 @@ Wariant motywu:
 python app_main.py --variant horizon
 ```
 
-Aliasy kompatybilnosci (legacy):
-- `python start.py`
-- `python start_horizon.py`
+Dodatkowe launchery:
+- `python launcher_classic.py`
+- `python launcher_horizon.py`
 
 ## Pierwsze uruchomienie (wymagane)
 - Lokalnie (Ollama): zainstalowana Ollama + co najmniej jeden model.
@@ -58,13 +58,13 @@ export GOOGLE_API_KEY="<TWOJ_KLUCZ>"
 - `app_main.py` - launcher wariantow GUI (`classic`/`horizon`),
 - `app_gui_classic.py` - glowne GUI,
 - `app_gui_horizon.py` - wariant Horizon,
-- `start.py` - alias kompatybilnosci (classic),
-- `start_horizon.py` - alias kompatybilnosci (horizon),
+- `launcher_classic.py` - launcher classic,
+- `launcher_horizon.py` - launcher horizon,
 - `studio_suite.py` - Studio Tools,
 - `project_db.py` - baza projektu, runy, QA, TM,
 - `series_store.py` - baza serii, terminy i eksport/scalanie glosariusza serii,
 - `runtime_core.py` - wspolna logika runtime (uzywana tez przez web backend),
-- `tlumacz_ollama.py` - silnik tlumaczenia.
+- `translation_engine.py` - silnik tlumaczenia.
 
 ## Dane lokalne serii
 - `project-tkinter/data/series/<series-slug>/series.db` - lokalna baza terminow i decyzji serii.

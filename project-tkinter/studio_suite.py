@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -713,9 +713,9 @@ class StudioSuiteWindow:
                 "app_main.py",
                 "app_gui_classic.py",
                 "app_gui_horizon.py",
-                "start.py",
-                "start_horizon.py",
-                "tlumacz_ollama.py",
+                "launcher_classic.py",
+                "launcher_horizon.py",
+                "translation_engine.py",
                 "project_db.py",
                 "epub_enhancer.py",
                 "studio_suite.py",

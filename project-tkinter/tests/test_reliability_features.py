@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from runtime_core import RunOptions, build_run_command  # noqa: E402
 from text_preserve import set_text_preserving_inline  # noqa: E402
-from tlumacz_ollama import SegmentLedger  # noqa: E402
+from translation_engine import SegmentLedger  # noqa: E402
 
 
 def test_segment_ledger_lifecycle_and_stale_reset(tmp_path: Path) -> None:
@@ -85,7 +85,7 @@ def test_build_run_command_includes_run_step() -> None:
         target_lang="pl",
         run_step="edit",
     )
-    cmd = build_run_command(["python", "-u", "tlumacz_ollama.py"], opts)
+    cmd = build_run_command(["python", "-u", "translation_engine.py"], opts)
     assert "--run-step" in cmd
     idx = cmd.index("--run-step")
     assert idx + 1 < len(cmd)

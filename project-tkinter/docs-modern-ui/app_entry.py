@@ -1,15 +1,15 @@
-﻿from pathlib import Path
+from pathlib import Path
 import runpy
 
 
 def _find_project_root(anchor: Path) -> Path:
     # Szukamy katalogu projektu po markerach wymaganych do uruchomienia.
-    required = ("app_main.py", "project_db.py", "tlumacz_ollama.py")
+    required = ("app_main.py", "project_db.py", "translation_engine.py")
     for candidate in (anchor, *anchor.parents):
         if all((candidate / name).exists() for name in required):
             return candidate
     raise SystemExit(
-        "Nie znaleziono katalogu projektu (brak markerow: app_main.py, project_db.py, tlumacz_ollama.py)."
+        "Nie znaleziono katalogu projektu (brak markerow: app_main.py, project_db.py, translation_engine.py)."
     )
 
 

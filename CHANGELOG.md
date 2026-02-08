@@ -23,6 +23,11 @@ All notable changes to this project are documented in this file.
   - hard-gate `EPUBCheck` option in Tkinter run panel.
 
 ### Changed
+- Naming cleanup (repo alignment):
+  - `project-tkinter/tlumacz_ollama.py` renamed to `project-tkinter/translation_engine.py`,
+  - `project-tkinter/start.py` renamed to `project-tkinter/launcher_classic.py`,
+  - `project-tkinter/start_horizon.py` renamed to `project-tkinter/launcher_horizon.py`,
+  - archived legacy names aligned in `legacy/`.
 - `project-tkinter/app_gui_classic.py`:
   - added series controls in project panel,
   - project create/save/import flow now supports series,

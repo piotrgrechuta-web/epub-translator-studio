@@ -9,7 +9,7 @@ import string
 import time
 from pathlib import Path
 
-from tlumacz_ollama import TranslationMemory
+from translation_engine import TranslationMemory
 
 
 def _rand_words(n: int) -> str:

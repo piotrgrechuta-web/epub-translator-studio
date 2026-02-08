@@ -24,7 +24,7 @@ KEYWORDS: `EPUB translator`, `EPUB translator desktop app`, `EPUB translation to
   - main desktop app in Python + Tkinter
   - fullest feature set
 - `legacy/`
-  - archived root scripts from older layout (`legacy/start.py`, `legacy/tlumacz_ollama.py`)
+  - archived root scripts from older layout (`legacy/launcher_classic.py`, `legacy/translation_engine.py`)
   - not the recommended runtime path
 
 ## Quick start
@@ -35,9 +35,9 @@ cd project-tkinter
 python app_main.py --variant classic
 ```
 
-Compatibility aliases still available:
-- `python start.py`
-- `python start_horizon.py`
+Direct launchers are also available:
+- `python launcher_classic.py`
+- `python launcher_horizon.py`
 
 ## First Run
 - You need one of these paths:
@@ -81,7 +81,7 @@ export GOOGLE_API_KEY="<YOUR_KEY>"
 
 ## Architecture (Tkinter core)
 - shared runtime logic lives in `project-tkinter/runtime_core.py`
-- canonical translator: `project-tkinter/tlumacz_ollama.py`
+- canonical translator: `project-tkinter/translation_engine.py`
 - both UI variants (`classic`, `horizon`) run on the same core/runtime contracts
 
 ## Documentation

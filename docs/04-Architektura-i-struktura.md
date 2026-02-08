@@ -14,7 +14,7 @@ Kluczowe obszary:
 - `app_gui_classic.py` - glowny UI i orchestracja,
 - `app_gui_horizon.py` - wariant Horizon,
 - `runtime_core.py` - wspolna logika runtime,
-- `tlumacz_ollama.py` - mechanika tlumaczenia,
+- `translation_engine.py` - mechanika tlumaczenia,
 - `project_db.py` - baza i metadane projektowe,
 - `series_store.py` - per-seria magazyn terminow/decyzji i generowanie slownikow serii.
 

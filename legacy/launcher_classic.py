@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-STARTER (Google vs Ollama) — wersja z podziałem mechanizmów per provider
+STARTER (Google vs Ollama) â€” wersja z podziaĹ‚em mechanizmĂłw per provider
 
-Wymagania użytkownika:
-- Zawsze możliwość WYBORU modelu AI (Google i Ollama) poprzez wyświetlenie dostępnych modeli
-- Dla Ollama: NIE pytaj o host (traktujemy jako stały, ewentualnie nadpisywalny ENV)
-- Uruchamia tłumacza, który pokazuje POSTĘP CAŁEGO PROJEKTU (globalny), a nie tylko pliku/segmentu
+Wymagania uĹĽytkownika:
+- Zawsze moĹĽliwoĹ›Ä‡ WYBORU modelu AI (Google i Ollama) poprzez wyĹ›wietlenie dostÄ™pnych modeli
+- Dla Ollama: NIE pytaj o host (traktujemy jako staĹ‚y, ewentualnie nadpisywalny ENV)
+- Uruchamia tĹ‚umacza, ktĂłry pokazuje POSTÄP CAĹEGO PROJEKTU (globalny), a nie tylko pliku/segmentu
 
-Zależności:
+ZaleĹĽnoĹ›ci:
   pip install requests
 """
 
@@ -27,16 +27,16 @@ import requests
 
 
 # ----------------------------
-# Konfiguracje stałe / bezpieczniki
+# Konfiguracje staĹ‚e / bezpieczniki
 # ----------------------------
 
 SESSION_FILE = Path(__file__).resolve().with_name(".last_session.json")
 
-# Wklej tu swój klucz (jeśli chcesz mieć go jawnie w kodzie).
-# Możesz też zostawić pusty i wkleić przy uruchomieniu — wtedy nadal jest jawnie przekazany jako --api-key.
+# Wklej tu swĂłj klucz (jeĹ›li chcesz mieÄ‡ go jawnie w kodzie).
+# MoĹĽesz teĹĽ zostawiÄ‡ pusty i wkleiÄ‡ przy uruchomieniu â€” wtedy nadal jest jawnie przekazany jako --api-key.
 GOOGLE_API_KEY = ""  # np. "AIza...." (nie commituj tego do repo)
 
-# Stały host Ollamy (bez pytania). Możesz nadpisać env OLLAMA_HOST.
+# StaĹ‚y host Ollamy (bez pytania). MoĹĽesz nadpisaÄ‡ env OLLAMA_HOST.
 OLLAMA_HOST_DEFAULT = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 
 
@@ -60,39 +60,39 @@ def q(arg: str) -> str:
 
 def _maybe_rel(p: Path, base: Path) -> str:
     """
-    Zwraca ścieżkę względną względem base, jeśli to możliwe.
-    Dzięki temu sesja jest przenośna (zmiana litery dysku nie psuje wznowienia).
+    Zwraca Ĺ›cieĹĽkÄ™ wzglÄ™dnÄ… wzglÄ™dem base, jeĹ›li to moĹĽliwe.
+    DziÄ™ki temu sesja jest przenoĹ›na (zmiana litery dysku nie psuje wznowienia).
     """
     try:
-        # działa tylko jeśli p jest "pod" base (typowe: wszystko w katalogu projektu)
+        # dziaĹ‚a tylko jeĹ›li p jest "pod" base (typowe: wszystko w katalogu projektu)
         return str(p.resolve().relative_to(base.resolve()))
     except Exception:
-        # fallback: relpath (obsłuży też przypadek absolutnej ścieżki na innym dysku)
+        # fallback: relpath (obsĹ‚uĹĽy teĹĽ przypadek absolutnej Ĺ›cieĹĽki na innym dysku)
         return os.path.relpath(str(p), str(base))
 
 def _portableize_existing_cmd(cmd: List[str], workdir: Path) -> List[str]:
     """
-    Naprawia STARE sesje, które zapisały absolutne ścieżki z literą dysku (np. H:\...).
-    Jeśli plik o tej samej nazwie istnieje w workdir, podmienia argument na nazwę pliku.
+    Naprawia STARE sesje, ktĂłre zapisaĹ‚y absolutne Ĺ›cieĹĽki z literÄ… dysku (np. H:\...).
+    JeĹ›li plik o tej samej nazwie istnieje w workdir, podmienia argument na nazwÄ™ pliku.
     """
     def _fix_path_arg(arg: str) -> str:
         p = Path(arg)
         if p.exists():
             return arg
-        # jeśli nie istnieje, spróbuj po nazwie w workdir
+        # jeĹ›li nie istnieje, sprĂłbuj po nazwie w workdir
         cand = workdir / p.name
         if cand.exists():
-            return cand.name  # względnie względem cwd=workdir
+            return cand.name  # wzglÄ™dnie wzglÄ™dem cwd=workdir
         return arg
 
     out = list(cmd)
 
-    # cmd[1]=translator, cmd[2]=input_epub, cmd[3]=output_epub (patrz budowa komendy niżej)
+    # cmd[1]=translator, cmd[2]=input_epub, cmd[3]=output_epub (patrz budowa komendy niĹĽej)
     for i in (1, 2, 3):
         if i < len(out):
             out[i] = _fix_path_arg(out[i])
 
-    # flagi, po których idzie ścieżka
+    # flagi, po ktĂłrych idzie Ĺ›cieĹĽka
     i = 0
     while i < len(out) - 1:
         if out[i] in ("--prompt", "--cache", "--glossary", "--debug-dir"):
@@ -104,7 +104,7 @@ def _portableize_existing_cmd(cmd: List[str], workdir: Path) -> List[str]:
     return out
 
 def format_cmd_redacting_secrets(cmd: List[str]) -> str:
-    """Formatuje komendę do logu, maskując wartości po --api-key."""
+    """Formatuje komendÄ™ do logu, maskujÄ…c wartoĹ›ci po --api-key."""
     out: List[str] = []
     redact_next = False
     for a in cmd:
@@ -135,7 +135,7 @@ def pick_one(paths: List[Path], label: str) -> Optional[Path]:
             idx = int(s)
             if 1 <= idx <= len(paths):
                 return paths[idx - 1]
-        print("  Podaj numer z listy (Enter nie wybiera domyślnie).")
+        print("  Podaj numer z listy (Enter nie wybiera domyĹ›lnie).")
 
 
 def ask_yes_no(prompt: str, default_yes: bool) -> bool:
@@ -155,7 +155,7 @@ def ask_required_int(prompt: str, min_v: int = 1, max_v: int = 10**9) -> int:
     while True:
         s = input(prompt).strip()
         if not s:
-            print("  Wymagane — wpisz wartość.")
+            print("  Wymagane â€” wpisz wartoĹ›Ä‡.")
             continue
         try:
             v = int(s)
@@ -163,14 +163,14 @@ def ask_required_int(prompt: str, min_v: int = 1, max_v: int = 10**9) -> int:
                 return v
         except ValueError:
             pass
-        print(f"  Podaj liczbę całkowitą w zakresie {min_v}..{max_v}.")
+        print(f"  Podaj liczbÄ™ caĹ‚kowitÄ… w zakresie {min_v}..{max_v}.")
 
 
 def ask_required_float(prompt: str, min_v: float = 0.0, max_v: float = 10**9) -> float:
     while True:
         s = input(prompt).strip()
         if not s:
-            print("  Wymagane — wpisz wartość.")
+            print("  Wymagane â€” wpisz wartoĹ›Ä‡.")
             continue
         try:
             v = float(s.replace(",", "."))
@@ -178,7 +178,7 @@ def ask_required_float(prompt: str, min_v: float = 0.0, max_v: float = 10**9) ->
                 return v
         except ValueError:
             pass
-        print(f"  Podaj liczbę w zakresie {min_v}..{max_v}.")
+        print(f"  Podaj liczbÄ™ w zakresie {min_v}..{max_v}.")
 
 
 def save_session(data: dict) -> None:
@@ -245,10 +245,10 @@ def pick_from_list(options: List[str], label: str) -> str:
     if not options:
         raise SystemExit(f"Brak opcji do wyboru: {label}")
     if len(options) == 1:
-        print(f"\nDostępny jest tylko jeden {label}: {options[0]}")
+        print(f"\nDostÄ™pny jest tylko jeden {label}: {options[0]}")
         return options[0]
 
-    print(f"\nDostępne {label}:")
+    print(f"\nDostÄ™pne {label}:")
     for i, m in enumerate(options, 1):
         print(f"  [{i}] {m}")
 
@@ -258,7 +258,7 @@ def pick_from_list(options: List[str], label: str) -> str:
             idx = int(s)
             if 1 <= idx <= len(options):
                 return options[idx - 1]
-        print("  Podaj numer z listy (Enter nie wybiera domyślnie).")
+        print("  Podaj numer z listy (Enter nie wybiera domyĹ›lnie).")
 
 
 # ----------------------------
@@ -266,14 +266,14 @@ def pick_from_list(options: List[str], label: str) -> str:
 # ----------------------------
 
 def find_glossary(workdir: Path) -> Optional[Path]:
-    exact = workdir / "SŁOWNIK.txt"
+    exact = workdir / "SĹOWNIK.txt"
     if exact.exists():
         return exact
-    for name in ("slownik.txt", "słownik.txt", "SLOWNIK.txt", "Słownik.txt"):
+    for name in ("slownik.txt", "sĹ‚ownik.txt", "SLOWNIK.txt", "SĹ‚ownik.txt"):
         p = workdir / name
         if p.exists():
             return p
-    cand = sorted([p for p in workdir.glob("*.txt") if "slownik" in p.name.lower() or "słownik" in p.name.lower()])
+    cand = sorted([p for p in workdir.glob("*.txt") if "slownik" in p.name.lower() or "sĹ‚ownik" in p.name.lower()])
     return cand[0] if cand else None
 
 
@@ -284,25 +284,22 @@ def find_glossary(workdir: Path) -> Optional[Path]:
 def main() -> int:
     workdir = Path(__file__).resolve().parent
 
-    translator = workdir / "tlumacz_ollama_google_ollama.py"
+    translator = workdir / "translation_engine.py"
     if not translator.exists():
-        # fallback: jeśli użytkownik zachowa nazwę tlumacz_ollama.py
-        translator = workdir / "tlumacz_ollama.py"
-    if not translator.exists():
-        raise SystemExit("Nie znaleziono skryptu tłumacza (tlumacz_ollama_google_ollama.py lub tlumacz_ollama.py).")
+        raise SystemExit("Nie znaleziono skryptu silnika translacji (translation_engine.py).")
 
     # Resume
     session = load_session()
     if session:
-        print("\n[!] WYKRYTO PRZERWANĄ SESJĘ:")
-        print(f"    wejście:   {Path(session.get('input_epub','')).name}")
-        print(f"    wyjście:   {Path(session.get('out_epub','')).name}")
+        print("\n[!] WYKRYTO PRZERWANÄ„ SESJÄ:")
+        print(f"    wejĹ›cie:   {Path(session.get('input_epub','')).name}")
+        print(f"    wyjĹ›cie:   {Path(session.get('out_epub','')).name}")
         print(f"    provider:  {session.get('provider')}")
         print(f"    model:     {session.get('model')}")
-        if ask_yes_no("Wznowić z tymi samymi ustawieniami?", default_yes=True):
+        if ask_yes_no("WznowiÄ‡ z tymi samymi ustawieniami?", default_yes=True):
             cmd = _portableize_existing_cmd(session["cmd"], workdir)
-            # przy wznowieniu pozwól wybrać inny model (opcjonalnie)
-            if ask_yes_no("Chcesz zmienić model przed wznowieniem?", default_yes=False):
+            # przy wznowieniu pozwĂłl wybraÄ‡ inny model (opcjonalnie)
+            if ask_yes_no("Chcesz zmieniÄ‡ model przed wznowieniem?", default_yes=False):
                 provider = session["provider"]
                 if provider == "ollama":
                     models = list_ollama_models(OLLAMA_HOST_DEFAULT)
@@ -315,7 +312,7 @@ def main() -> int:
                         raise SystemExit("Brak klucza Google API.")
                     models = list_google_models(api_key)
                     model = pick_from_list(models, "modele Google (generateContent)")
-                # podmień w cmd wartość po --model
+                # podmieĹ„ w cmd wartoĹ›Ä‡ po --model
                 new_cmd = []
                 it = iter(cmd)
                 for a in it:
@@ -328,7 +325,7 @@ def main() -> int:
                 cmd = _portableize_existing_cmd(new_cmd, workdir)
                 session["cmd"] = cmd
                 session["model"] = model
-                # nie zapisujemy sekretów, ale cmd ma --api-key jeśli google i użytkownik tak chce
+                # nie zapisujemy sekretĂłw, ale cmd ma --api-key jeĹ›li google i uĹĽytkownik tak chce
                 save_session(session)
 
             print("\nGotowa komenda (dla logu):\n")
@@ -337,18 +334,18 @@ def main() -> int:
             try:
                 subprocess.run(cmd, cwd=str(workdir), check=True)
                 clear_session()
-                print("\nZakończono.")
+                print("\nZakoĹ„czono.")
                 return 0
             except subprocess.CalledProcessError:
-                print("\n[!] Błąd. Sesja została zachowana — możesz wznowić przy następnym uruchomieniu.")
+                print("\n[!] BĹ‚Ä…d. Sesja zostaĹ‚a zachowana â€” moĹĽesz wznowiÄ‡ przy nastÄ™pnym uruchomieniu.")
                 return 1
 
-        print("\nOK — konfiguruję nową sesję (poprzednia zostanie nadpisana).\n")
+        print("\nOK â€” konfigurujÄ™ nowÄ… sesjÄ™ (poprzednia zostanie nadpisana).\n")
 
     # Tryb
     print("Wybierz tryb pracy:")
-    print("  [1] Tłumaczenie (EN → PL)  używa: prompt.txt")
-    print("  [2] Redakcja (PL → PL)    używa: prompt_redakcja.txt")
+    print("  [1] TĹ‚umaczenie (EN â†’ PL)  uĹĽywa: prompt.txt")
+    print("  [2] Redakcja (PL â†’ PL)    uĹĽywa: prompt_redakcja.txt")
     while True:
         mode = input("Tryb [1/2]: ").strip()
         if mode in ("1", "2"):
@@ -362,7 +359,7 @@ def main() -> int:
     # EPUB input
     input_epub = pick_one(sorted(workdir.glob("*.epub")), "EPUB")
     if input_epub is None:
-        raise SystemExit("Nie znaleziono żadnego *.epub w katalogu.")
+        raise SystemExit("Nie znaleziono ĹĽadnego *.epub w katalogu.")
 
     # Output + cache
     if mode == "1":
@@ -389,7 +386,7 @@ def main() -> int:
 
     # Model selection
     if provider == "ollama":
-        print(f"\nOllama host (stały): {host}")
+        print(f"\nOllama host (staĹ‚y): {host}")
         models = list_ollama_models(host)
         model = pick_from_list(models, "modele Ollama")
         api_key = None
@@ -402,25 +399,25 @@ def main() -> int:
         models = list_google_models(api_key)
         model = pick_from_list(models, "modele Google (generateContent)")
 
-    # Batch params — wymagane (bez domyślnych)
+    # Batch params â€” wymagane (bez domyĹ›lnych)
     print("\nParametry batchowania (WYMAGANE):")
-    print("  Wskazówka: dla Google zwykle większy batch zmniejsza liczbę requestów, ale nie przesadzaj jeśli masz 429/timeout.")
-    batch_max_segs = ask_required_int("Maks. liczba segmentów na request (--batch-max-segs): ", min_v=1, max_v=100)
-    batch_max_chars = ask_required_int("Maks. znaków na request (--batch-max-chars): ", min_v=500, max_v=500000)
+    print("  WskazĂłwka: dla Google zwykle wiÄ™kszy batch zmniejsza liczbÄ™ requestĂłw, ale nie przesadzaj jeĹ›li masz 429/timeout.")
+    batch_max_segs = ask_required_int("Maks. liczba segmentĂłw na request (--batch-max-segs): ", min_v=1, max_v=100)
+    batch_max_chars = ask_required_int("Maks. znakĂłw na request (--batch-max-chars): ", min_v=500, max_v=500000)
 
     # Sleep
-    sleep_s = ask_required_float("Pauza między requestami w sekundach (--sleep) [dla Ollama zwykle 0, dla Google np. 1-3]: ", min_v=0.0, max_v=60.0)
+    sleep_s = ask_required_float("Pauza miÄ™dzy requestami w sekundach (--sleep) [dla Ollama zwykle 0, dla Google np. 1-3]: ", min_v=0.0, max_v=60.0)
 
     # Cache + glossary
-    use_cache = ask_yes_no("Użyć cache do wznawiania?", default_yes=True)
+    use_cache = ask_yes_no("UĹĽyÄ‡ cache do wznawiania?", default_yes=True)
     use_glossary = False
     if glossary is not None:
-        use_glossary = ask_yes_no(f"Użyć słownika {glossary.name}?", default_yes=True)
+        use_glossary = ask_yes_no(f"UĹĽyÄ‡ sĹ‚ownika {glossary.name}?", default_yes=True)
     else:
-        print("\nNie wykryto słownika (SŁOWNIK.txt/slownik.txt).")
+        print("\nNie wykryto sĹ‚ownika (SĹOWNIK.txt/slownik.txt).")
 
-    # Extra: checkpoint frequency (global progress i tak pokazuje tłumacz)
-    checkpoint_every_files = ask_required_int("Checkpoint: zapisuj co N plików spine (--checkpoint-every-files) [0=wyłącz]: ", min_v=0, max_v=9999)
+    # Extra: checkpoint frequency (global progress i tak pokazuje tĹ‚umacz)
+    checkpoint_every_files = ask_required_int("Checkpoint: zapisuj co N plikĂłw spine (--checkpoint-every-files) [0=wyĹ‚Ä…cz]: ", min_v=0, max_v=9999)
 
     # Build command
     cmd: List[str] = [
@@ -435,12 +432,12 @@ def main() -> int:
         "--batch-max-chars", str(batch_max_chars),
         "--sleep", str(sleep_s),
         "--checkpoint-every-files", str(checkpoint_every_files),
-        # debug dir zostawiamy stały dla łatwej diagnostyki
+        # debug dir zostawiamy staĹ‚y dla Ĺ‚atwej diagnostyki
         "--debug-dir", "debug",
     ]
 
     if provider == "ollama":
-        # host stały, ale nadal przekazujemy jawnie do tłumacza dla przejrzystości/diagnostyki
+        # host staĹ‚y, ale nadal przekazujemy jawnie do tĹ‚umacza dla przejrzystoĹ›ci/diagnostyki
         cmd += ["--host", host]
     else:
         cmd += ["--api-key", api_key]
@@ -453,7 +450,7 @@ def main() -> int:
     else:
         cmd += ["--no-glossary"]
 
-    # Session (resume) — zapisujemy CMD i parametry. UWAGA: jeśli provider=google, cmd zawiera --api-key (jawnie).
+    # Session (resume) â€” zapisujemy CMD i parametry. UWAGA: jeĹ›li provider=google, cmd zawiera --api-key (jawnie).
     session_data = {
         "input_epub": input_epub.name,
         "out_epub": out_epub.name,
@@ -472,12 +469,13 @@ def main() -> int:
     try:
         subprocess.run(cmd, cwd=str(workdir), check=True)
         clear_session()
-        print(f"\nZakończono. Wynik: {out_epub.name}")
+        print(f"\nZakoĹ„czono. Wynik: {out_epub.name}")
         return 0
     except subprocess.CalledProcessError:
-        print("\n[!] Wystąpił błąd. Sesja została zapisana — możesz wznowić przy następnym uruchomieniu.")
+        print("\n[!] WystÄ…piĹ‚ bĹ‚Ä…d. Sesja zostaĹ‚a zapisana â€” moĹĽesz wznowiÄ‡ przy nastÄ™pnym uruchomieniu.")
         return 1
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

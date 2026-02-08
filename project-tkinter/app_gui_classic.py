@@ -62,7 +62,7 @@ SERIES_DATA_DIR = Path(__file__).resolve().with_name("data").joinpath("series")
 GOOGLE_KEYRING_SERVICE = "epub-translator-studio"
 GOOGLE_KEYRING_USER = "google_api_key"
 GLOBAL_PROGRESS_RE = re.compile(r"GLOBAL\s+(\d+)\s*/\s*(\d+)\s*\(([^)]*)\)\s*\|\s*(.*)")
-TOTAL_SEGMENTS_RE = re.compile(r"Segmenty\s+(?:Ĺ‚Ä…cznie|lacznie)\s*:\s*(\d+)", re.IGNORECASE)
+TOTAL_SEGMENTS_RE = re.compile(r"Segmenty\s+(?:Äąâ€šĂ„â€¦cznie|lacznie)\s*:\s*(\d+)", re.IGNORECASE)
 CACHE_SEGMENTS_RE = re.compile(r"Segmenty\s+z\s+cache\s*:\s*(\d+)", re.IGNORECASE)
 CHAPTER_CACHE_TM_RE = re.compile(r"\(cache:\s*(\d+)\s*,\s*tm:\s*(\d+)\)", re.IGNORECASE)
 METRICS_BLOB_RE = re.compile(r"metrics\[(.*?)\]", re.IGNORECASE)
@@ -611,7 +611,7 @@ class TranslatorGUI:
         self.status_counts_var = tk.StringVar(value="idle=0 | pending=0 | running=0 | error=0")
         self.status_var = tk.StringVar(value=self.tr("status.ready", "Gotowe"))
         self.inline_notice_var = tk.StringVar(value="")
-        self.progress_text_var = tk.StringVar(value=self.tr("status.progress.zero", "PostÄ™p: 0 / 0"))
+        self.progress_text_var = tk.StringVar(value=self.tr("status.progress.zero", "PostĂ„â„˘p: 0 / 0"))
         self.phase_var = tk.StringVar(value=self.tr("status.phase.wait", "Etap: oczekiwanie"))
         self.run_metrics_var = tk.StringVar(value=self.tr("status.metrics.none", "Metryki runu: brak"))
         self.progress_value_var = tk.DoubleVar(value=0.0)
@@ -841,38 +841,38 @@ class TranslatorGUI:
             self.tr("button.open_manual", "Otworz manual"): tt("tip.button.open_manual", "Opens user manual."),
             self.tr("button.new", "Nowy"): tt("tip.button.new", "Creates a new project in SQLite."),
             self.tr("button.save", "Zapisz"): tt("tip.button.save", "Saves project changes and current paths/settings."),
-            self.tr("button.delete", "UsuĹ„"): tt("tip.button.delete", "Soft-delete project: hidden from active list, history remains."),
-            self.tr("button.delete_hard", "UsuĹ„ hard"): tt("tip.button.delete_hard", "Deletes project permanently with run history and QA."),
+            self.tr("button.delete", "UsuÄąâ€ž"): tt("tip.button.delete", "Soft-delete project: hidden from active list, history remains."),
+            self.tr("button.delete_hard", "UsuÄąâ€ž hard"): tt("tip.button.delete_hard", "Deletes project permanently with run history and QA."),
             self.tr("button.save_as_profile", "Zapisz jako profil"): tt("tip.button.save_as_profile", "Creates profile from current step parameters."),
             self.tr("button.export", "Eksport"): tt("tip.button.export", "Exports project configuration to JSON."),
             self.tr("button.import", "Import"): tt("tip.button.import", "Imports project/profile from JSON."),
             self.tr("provider.ollama", "Ollama (lokalnie)"): tt("tip.provider.ollama", "Local provider, no API cost, depends on machine resources."),
             self.tr("provider.google", "Google Gemini API"): tt("tip.provider.google", "Cloud provider, often faster on big batches, paid API."),
-            self.tr("button.refresh_models", "OdĹ›wieĹĽ listÄ™ modeli"): tt("tip.button.refresh_models", "Fetches model list from selected provider."),
+            self.tr("button.refresh_models", "OdÄąâ€şwieÄąÄ˝ listĂ„â„˘ modeli"): tt("tip.button.refresh_models", "Fetches model list from selected provider."),
             self.tr("button.start", "Start translacji"): tt("tip.button.start", "Starts current step for active project."),
             self.tr("button.stop", "Stop"): tt("tip.button.stop", "Stops currently running process."),
             self.tr("button.validate_epub", "Waliduj EPUB"): tt("tip.button.validate_epub", "Runs EPUB validation after processing."),
             self.tr("button.estimate", "Estymacja"): tt("tip.button.estimate", "Calculates segments/time/cost estimate before start."),
             self.tr("button.queue", "Kolejkuj"): tt("tip.button.queue", "Marks project as pending."),
-            self.tr("button.run_next", "Uruchom nastÄ™pny"): tt("tip.button.run_next", "Runs next pending project."),
+            self.tr("button.run_next", "Uruchom nastĂ„â„˘pny"): tt("tip.button.run_next", "Runs next pending project."),
             self.tr("button.run_all_pending", "Run all pending"): tt("tip.button.run_all_pending", "Runs all pending projects sequentially."),
             self.tr("button.stop_run_all", "Stop run-all"): tt("tip.button.stop_run_all", "Stops run-all after current task."),
-            self.tr("button.open_output", "OtwĂłrz output"): tt("tip.button.open_output", "Opens output file/folder in system explorer."),
-            self.tr("button.open_cache", "OtwĂłrz cache"): tt("tip.button.open_cache", "Opens cache file location."),
-            self.tr("button.clear_debug", "WyczyĹ›Ä‡ debug"): tt("tip.button.clear_debug", "Clears debug folder artifacts."),
-            self.tr("button.add_card_single", "Dodaj wizytĂłwkÄ™ (1 EPUB)"): tt("tip.button.add_card_single", "Adds business-card page to one EPUB."),
-            self.tr("button.add_card_batch", "Dodaj wizytĂłwkÄ™ (folder)"): tt("tip.button.add_card_batch", "Adds business-card page to all EPUB in folder."),
-            self.tr("button.remove_cover", "UsuĹ„ okĹ‚adkÄ™"): tt("tip.button.remove_cover", "Removes cover image/resources from EPUB."),
-            self.tr("button.remove_graphics_pattern", "UsuĹ„ grafiki (pattern)"): tt("tip.button.remove_graphics_pattern", "Removes images by path/name pattern."),
+            self.tr("button.open_output", "OtwÄ‚Ĺ‚rz output"): tt("tip.button.open_output", "Opens output file/folder in system explorer."),
+            self.tr("button.open_cache", "OtwÄ‚Ĺ‚rz cache"): tt("tip.button.open_cache", "Opens cache file location."),
+            self.tr("button.clear_debug", "WyczyÄąâ€şĂ„â€ˇ debug"): tt("tip.button.clear_debug", "Clears debug folder artifacts."),
+            self.tr("button.add_card_single", "Dodaj wizytÄ‚Ĺ‚wkĂ„â„˘ (1 EPUB)"): tt("tip.button.add_card_single", "Adds business-card page to one EPUB."),
+            self.tr("button.add_card_batch", "Dodaj wizytÄ‚Ĺ‚wkĂ„â„˘ (folder)"): tt("tip.button.add_card_batch", "Adds business-card page to all EPUB in folder."),
+            self.tr("button.remove_cover", "UsuÄąâ€ž okÄąâ€šadkĂ„â„˘"): tt("tip.button.remove_cover", "Removes cover image/resources from EPUB."),
+            self.tr("button.remove_graphics_pattern", "UsuÄąâ€ž grafiki (pattern)"): tt("tip.button.remove_graphics_pattern", "Removes images by path/name pattern."),
             self.tr("button.open_text_editor", "Edytor tekstu EPUB"): tt("tip.button.open_text_editor", "Opens chapter/segment text editor."),
-            self.tr("button.undo_last_operation", "Cofnij ostatniÄ… operacjÄ™"): tt("tip.button.undo_last_operation", "Restores from latest operation backup."),
+            self.tr("button.undo_last_operation", "Cofnij ostatniĂ„â€¦ operacjĂ„â„˘"): tt("tip.button.undo_last_operation", "Restores from latest operation backup."),
             self.tr("button.open_studio", "Studio Tools (12)"): tt("tip.button.open_studio", "Opens extended QA/TM/pipeline/plugin tools."),
             self.tr("button.choose", "Wybierz"): tt("tip.button.choose", "Opens file chooser dialog."),
             self.tr("tab.basic", "Podstawowe"): tt("tip.tab.basic", "Tab with core files and engine setup."),
             self.tr("tab.advanced", "Zaawansowane"): tt("tip.tab.advanced", "Tab with quality/retry/checkpoint settings."),
             self.tr("label.tooltip_mode", "Tooltip mode:"): tt("tip.label.tooltip_mode", "Select tooltip verbosity style: short/hybrid/expert."),
             self.tr("label.ui_language", "UI language:"): tt("tip.label.ui_language", "Choose interface language (pl/en/de/fr/es/pt)."),
-            self.tr("button.ai_translate_gui", "AI: szkic tĹ‚umaczenia GUI"): tt("tip.button.ai_translate_gui", "Generates AI draft translation for GUI labels."),
+            self.tr("button.ai_translate_gui", "AI: szkic tÄąâ€šumaczenia GUI"): tt("tip.button.ai_translate_gui", "Generates AI draft translation for GUI labels."),
         }
         object_tip: Dict[int, str] = {
             id(self.status_list): tt("tip.obj.status_list", "List of all projects with their execution status."),
@@ -954,7 +954,7 @@ class TranslatorGUI:
     def _ai_translate_ui_language(self) -> None:
         lang = str(self.ui_language_var.get() or "").strip().lower()
         if lang not in SUPPORTED_UI_LANGS:
-            self._msg_error(self.tr("err.ui_lang_invalid", "Wybierz poprawny jÄ™zyk UI."), title="AI")
+            self._msg_error(self.tr("err.ui_lang_invalid", "Wybierz poprawny jĂ„â„˘zyk UI."), title="AI")
             return
         base = self.i18n.english_map()
         if not base:
@@ -973,11 +973,11 @@ class TranslatorGUI:
         )
         if not ok:
             self._set_status(self.tr("status.ai_draft_failed", "AI translation failed"), "error")
-            self._msg_error(f"{self.tr('err.ai_draft_failed', 'Nie udaĹ‚o siÄ™ wygenerowaÄ‡ szkicu:')}\n{msg}", title="AI")
+            self._msg_error(f"{self.tr('err.ai_draft_failed', 'Nie udaÄąâ€šo siĂ„â„˘ wygenerowaĂ„â€ˇ szkicu:')}\n{msg}", title="AI")
             return
         draft_path = self.i18n.save_draft(lang, out)
         apply_now = self._ask_yes_no(
-            self.tr("confirm.ai_merge_draft", "Zapisano szkic: {name}\n\nScaliÄ‡ od razu do locales/{lang}.json?", name=draft_path.name, lang=lang),
+            self.tr("confirm.ai_merge_draft", "Zapisano szkic: {name}\n\nScaliĂ„â€ˇ od razu do locales/{lang}.json?", name=draft_path.name, lang=lang),
             title="AI draft",
         )
         if apply_now:
@@ -1020,10 +1020,10 @@ class TranslatorGUI:
             command=lambda: self._save_project(notify_missing=True),
             style="Primary.TButton",
         ).pack(side="left", padx=(self._theme_space("space_sm", 8), 0))
-        ttk.Button(pbtn, text=self.tr("button.delete", "UsuĹ„"), command=self._delete_project, style="Danger.TButton").pack(side="left", padx=(self._theme_space("space_sm", 8), 0))
+        ttk.Button(pbtn, text=self.tr("button.delete", "UsuÄąâ€ž"), command=self._delete_project, style="Danger.TButton").pack(side="left", padx=(self._theme_space("space_sm", 8), 0))
         ttk.Button(
             pbtn,
-            text=self.tr("button.delete_hard", "UsuĹ„ hard"),
+            text=self.tr("button.delete_hard", "UsuÄąâ€ž hard"),
             command=self._delete_project_hard,
             style="Danger.TButton",
         ).pack(side="left", padx=(self._theme_space("space_sm", 8), 0))
@@ -1063,7 +1063,7 @@ class TranslatorGUI:
         ttk.Label(stats, textvariable=self.status_counts_var, style="Sub.TLabel").pack(anchor="w")
         ttk.Label(
             stats,
-            text=self.tr("ui.hint.statuses", "Statusy: T=tlumaczenie, R=redakcja, strzalka pokazuje nastÄ™pny krok."),
+            text=self.tr("ui.hint.statuses", "Statusy: T=tlumaczenie, R=redakcja, strzalka pokazuje nastĂ„â„˘pny krok."),
             style="Helper.TLabel",
         ).pack(anchor="w", pady=(2, 0))
         self.status_list = tk.Listbox(stats, height=4)
@@ -1085,29 +1085,29 @@ class TranslatorGUI:
 
         ttk.Label(
             card,
-            text=self.tr("ui.hint.files", "Najpierw wybierz input/output, potem tryb i jÄ™zyki."),
+            text=self.tr("ui.hint.files", "Najpierw wybierz input/output, potem tryb i jĂ„â„˘zyki."),
             style="Helper.TLabel",
         ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, self._theme_space("space_sm", 8)))
 
-        self._row_file(card, 1, self.tr("file.input_epub", "WejĹ›ciowy EPUB"), self.input_epub_var, [("EPUB", "*.epub")], self._on_input_selected)
-        self._row_file(card, 2, self.tr("file.output_epub", "WyjĹ›ciowy EPUB"), self.output_epub_var, [("EPUB", "*.epub")])
+        self._row_file(card, 1, self.tr("file.input_epub", "WejÄąâ€şciowy EPUB"), self.input_epub_var, [("EPUB", "*.epub")], self._on_input_selected)
+        self._row_file(card, 2, self.tr("file.output_epub", "WyjÄąâ€şciowy EPUB"), self.output_epub_var, [("EPUB", "*.epub")])
         self._row_file(card, 3, self.tr("file.prompt", "Prompt"), self.prompt_var, [("TXT", "*.txt")], self._on_prompt_changed)
-        self._row_file(card, 4, self.tr("file.glossary", "SĹ‚ownik"), self.glossary_var, [("TXT", "*.txt")])
+        self._row_file(card, 4, self.tr("file.glossary", "SÄąâ€šownik"), self.glossary_var, [("TXT", "*.txt")])
         self._row_file(card, 5, self.tr("file.cache", "Cache"), self.cache_var, [("JSONL", "*.jsonl"), ("All", "*.*")])
 
         ttk.Label(card, text=self.tr("label.mode", "Tryb:")).grid(row=6, column=0, sticky="w", pady=(8, 0))
         mode_box = ttk.Frame(card)
         mode_box.grid(row=6, column=1, sticky="w", pady=(8, 0))
-        ttk.Radiobutton(mode_box, text=self.tr("mode.translate", "TĹ‚umaczenie"), value="translate", variable=self.mode_var, command=self._on_mode_change).pack(side="left", padx=(0, 12))
+        ttk.Radiobutton(mode_box, text=self.tr("mode.translate", "TÄąâ€šumaczenie"), value="translate", variable=self.mode_var, command=self._on_mode_change).pack(side="left", padx=(0, 12))
         ttk.Radiobutton(mode_box, text=self.tr("mode.edit", "Redakcja"), value="edit", variable=self.mode_var, command=self._on_mode_change).pack(side="left")
 
-        ttk.Label(card, text=self.tr("label.src_lang", "JÄ™zyk ĹşrĂłdĹ‚owy:")).grid(row=7, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(card, text=self.tr("label.src_lang", "JĂ„â„˘zyk ÄąĹźrÄ‚Ĺ‚dÄąâ€šowy:")).grid(row=7, column=0, sticky="w", pady=(8, 0))
         src_combo = ttk.Combobox(card, textvariable=self.source_lang_var, state="readonly", width=12)
         src_combo["values"] = list(SUPPORTED_TEXT_LANGS.keys())
         src_combo.grid(row=7, column=1, sticky="w", pady=(8, 0))
         src_combo.bind("<<ComboboxSelected>>", lambda _: self._on_lang_pair_change())
 
-        ttk.Label(card, text=self.tr("label.tgt_lang", "JÄ™zyk docelowy:")).grid(row=7, column=2, sticky="w", padx=(12, 0), pady=(8, 0))
+        ttk.Label(card, text=self.tr("label.tgt_lang", "JĂ„â„˘zyk docelowy:")).grid(row=7, column=2, sticky="w", padx=(12, 0), pady=(8, 0))
         tgt_combo = ttk.Combobox(card, textvariable=self.target_lang_var, state="readonly", width=12)
         tgt_combo["values"] = list(SUPPORTED_TEXT_LANGS.keys())
         tgt_combo.grid(row=7, column=3, sticky="w", pady=(8, 0))
@@ -1121,7 +1121,7 @@ class TranslatorGUI:
 
         ttk.Label(
             card,
-            text=self.tr("ui.hint.engine", "Ustaw provider i model. Parametry batch kontrolujÄ… stabilnoĹ›Ä‡ i szybkoĹ›Ä‡."),
+            text=self.tr("ui.hint.engine", "Ustaw provider i model. Parametry batch kontrolujĂ„â€¦ stabilnoÄąâ€şĂ„â€ˇ i szybkoÄąâ€şĂ„â€ˇ."),
             style="Helper.TLabel",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, self._theme_space("space_sm", 8)))
 
@@ -1145,7 +1145,7 @@ class TranslatorGUI:
         ttk.Label(card, text=self.tr("label.max_chars", "Max chars / request:")).grid(row=5, column=0, sticky="w", pady=(8, 0))
         ttk.Entry(card, textvariable=self.batch_max_chars_var, width=14).grid(row=5, column=1, sticky="w", pady=(8, 0))
 
-        ttk.Label(card, text=self.tr("label.sleep", "Pauza miÄ™dzy requestami:")).grid(row=6, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(card, text=self.tr("label.sleep", "Pauza miĂ„â„˘dzy requestami:")).grid(row=6, column=0, sticky="w", pady=(8, 0))
         ttk.Entry(card, textvariable=self.sleep_var, width=14).grid(row=6, column=1, sticky="w", pady=(8, 0))
 
         card.columnconfigure(1, weight=1)
@@ -1156,7 +1156,7 @@ class TranslatorGUI:
 
         ttk.Label(
             card,
-            text=self.tr("ui.hint.advanced", "Zmieniaj te pola tylko gdy potrzebujesz strojenia jakoĹ›ci/stabilnoĹ›ci."),
+            text=self.tr("ui.hint.advanced", "Zmieniaj te pola tylko gdy potrzebujesz strojenia jakoÄąâ€şci/stabilnoÄąâ€şci."),
             style="Helper.TLabel",
         ).grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, self._theme_space("space_sm", 8)))
 
@@ -1178,7 +1178,7 @@ class TranslatorGUI:
         ttk.Label(card, text=self.tr("label.num_predict", "Num predict:")).grid(row=2, column=4, sticky="w", padx=(12, 0), pady=(8, 0))
         ttk.Entry(card, textvariable=self.num_predict_var, width=10).grid(row=2, column=5, sticky="w", pady=(8, 0))
 
-        ttk.Label(card, text=self.tr("label.checkpoint", "Checkpoint co N plikĂłw:")).grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(card, text=self.tr("label.checkpoint", "Checkpoint co N plikÄ‚Ĺ‚w:")).grid(row=3, column=0, sticky="w", pady=(8, 0))
         ttk.Entry(card, textvariable=self.checkpoint_var, width=12).grid(row=3, column=1, sticky="w", pady=(8, 0))
 
         ttk.Label(card, text=self.tr("label.debug_dir", "Debug dir:")).grid(row=3, column=2, sticky="w", padx=(12, 0), pady=(8, 0))
@@ -1187,8 +1187,8 @@ class TranslatorGUI:
         ttk.Label(card, text=self.tr("label.tags", "Tagi:")).grid(row=4, column=0, sticky="w", pady=(8, 0))
         ttk.Entry(card, textvariable=self.tags_var).grid(row=4, column=1, columnspan=5, sticky="ew", pady=(8, 0))
 
-        ttk.Checkbutton(card, text="UĹĽyj cache", variable=self.use_cache_var, command=self._update_command_preview).grid(row=5, column=0, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(card, text="UĹĽyj sĹ‚ownika", variable=self.use_glossary_var, command=self._update_command_preview).grid(row=5, column=1, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(card, text="UÄąÄ˝yj cache", variable=self.use_cache_var, command=self._update_command_preview).grid(row=5, column=0, sticky="w", pady=(8, 0))
+        ttk.Checkbutton(card, text="UÄąÄ˝yj sÄąâ€šownika", variable=self.use_glossary_var, command=self._update_command_preview).grid(row=5, column=1, columnspan=2, sticky="w", pady=(8, 0))
 
         ttk.Label(card, text=self.tr("label.tooltip_mode", "Tooltip mode:")).grid(row=6, column=0, sticky="w", pady=(8, 0))
         tip_combo = ttk.Combobox(card, textvariable=self.tooltip_mode_var, state="readonly", width=14)
@@ -1217,7 +1217,7 @@ class TranslatorGUI:
 
         self.model_combo = ttk.Combobox(card, textvariable=self.model_var, state="readonly")
         self.model_combo.grid(row=0, column=0, sticky="ew")
-        ttk.Button(card, text=self.tr("button.refresh_models", "OdĹ›wieĹĽ listÄ™ modeli"), command=self._refresh_models, style="Secondary.TButton").grid(row=0, column=1, padx=(8, 0))
+        ttk.Button(card, text=self.tr("button.refresh_models", "OdÄąâ€şwieÄąÄ˝ listĂ„â„˘ modeli"), command=self._refresh_models, style="Secondary.TButton").grid(row=0, column=1, padx=(8, 0))
 
         self.model_status = ttk.Label(card, text="", style="Sub.TLabel")
         self.model_status.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
@@ -1228,11 +1228,11 @@ class TranslatorGUI:
         card = ttk.LabelFrame(parent, text=self.tr("section.run", "Uruchomienie"), padding=12, style="Card.TLabelframe")
         card.pack(fill="x", pady=(0, self._theme_space("space_sm", 8)))
 
-        ttk.Label(card, text=self.tr("run.command_preview", "PodglÄ…d komendy:")).pack(anchor="w")
+        ttk.Label(card, text=self.tr("run.command_preview", "PodglĂ„â€¦d komendy:")).pack(anchor="w")
         ttk.Entry(card, textvariable=self.command_preview_var, state="readonly").pack(fill="x", pady=(4, 8))
         ttk.Label(
             card,
-            text=self.tr("ui.hint.shortcuts", "SkrĂłty: Ctrl+S zapisz, Ctrl+R start, Ctrl+Q kolejkuj, F5 modele."),
+            text=self.tr("ui.hint.shortcuts", "SkrÄ‚Ĺ‚ty: Ctrl+S zapisz, Ctrl+R start, Ctrl+Q kolejkuj, F5 modele."),
             style="Helper.TLabel",
         ).pack(anchor="w", pady=(0, self._theme_space("space_sm", 8)))
         ttk.Checkbutton(
@@ -1251,7 +1251,7 @@ class TranslatorGUI:
         self.validate_btn.pack(side="left", padx=(8, 0))
         ttk.Button(btns, text=self.tr("button.estimate", "Estymacja"), command=self._start_estimate, style="Secondary.TButton").pack(side="left", padx=(16, 0))
         ttk.Button(btns, text=self.tr("button.queue", "Kolejkuj"), command=self._queue_current_project, style="Secondary.TButton").pack(side="left", padx=(8, 0))
-        ttk.Button(btns, text=self.tr("button.run_next", "Uruchom nastÄ™pny"), command=self._run_next_pending, style="Secondary.TButton").pack(side="left", padx=(8, 0))
+        ttk.Button(btns, text=self.tr("button.run_next", "Uruchom nastĂ„â„˘pny"), command=self._run_next_pending, style="Secondary.TButton").pack(side="left", padx=(8, 0))
         self.run_all_btn = ttk.Button(btns, text=self.tr("button.run_all_pending", "Run all pending"), command=self._start_run_all_pending, style="Secondary.TButton")
         self.run_all_btn.pack(side="left", padx=(8, 0))
         self.stop_run_all_btn = ttk.Button(btns, text=self.tr("button.stop_run_all", "Stop run-all"), command=self._stop_run_all_pending, state="disabled", style="Danger.TButton")
@@ -1259,9 +1259,9 @@ class TranslatorGUI:
 
         quick = ttk.Frame(card)
         quick.pack(fill="x", pady=(8, 0))
-        ttk.Button(quick, text=self.tr("button.open_output", "OtwĂłrz output"), command=self._open_output, style="Secondary.TButton").pack(side="left")
-        ttk.Button(quick, text=self.tr("button.open_cache", "OtwĂłrz cache"), command=self._open_cache, style="Secondary.TButton").pack(side="left", padx=(8, 0))
-        ttk.Button(quick, text=self.tr("button.clear_debug", "WyczyĹ›Ä‡ debug"), command=self._clear_debug, style="Secondary.TButton").pack(side="left", padx=(8, 0))
+        ttk.Button(quick, text=self.tr("button.open_output", "OtwÄ‚Ĺ‚rz output"), command=self._open_output, style="Secondary.TButton").pack(side="left")
+        ttk.Button(quick, text=self.tr("button.open_cache", "OtwÄ‚Ĺ‚rz cache"), command=self._open_cache, style="Secondary.TButton").pack(side="left", padx=(8, 0))
+        ttk.Button(quick, text=self.tr("button.clear_debug", "WyczyÄąâ€şĂ„â€ˇ debug"), command=self._clear_debug, style="Secondary.TButton").pack(side="left", padx=(8, 0))
         ttk.Label(quick, textvariable=self.estimate_var, style="Sub.TLabel").pack(side="right")
         ttk.Label(quick, textvariable=self.queue_status_var, style="Sub.TLabel").pack(side="right", padx=(0, 12))
 
@@ -1273,23 +1273,23 @@ class TranslatorGUI:
         ttk.Label(progress_wrap, textvariable=self.phase_var, style="Sub.TLabel").pack(anchor="w", pady=(4, 0))
 
     def _build_enhance_card(self, parent: ttk.Frame) -> None:
-        card = ttk.LabelFrame(parent, text=self.tr("section.enhance", "UĹ‚adnianie EPUB"), padding=12, style="Card.TLabelframe")
+        card = ttk.LabelFrame(parent, text=self.tr("section.enhance", "UÄąâ€šadnianie EPUB"), padding=12, style="Card.TLabelframe")
         card.pack(fill="x", pady=(0, self._theme_space("space_sm", 8)))
 
         row1 = ttk.Frame(card)
         row1.pack(fill="x")
-        ttk.Button(row1, text=self.tr("button.add_card_single", "Dodaj wizytĂłwkÄ™ (1 EPUB)"), command=self._add_card_single, style="Secondary.TButton").pack(side="left")
-        ttk.Button(row1, text=self.tr("button.add_card_batch", "Dodaj wizytĂłwkÄ™ (folder)"), command=self._add_card_batch, style="Secondary.TButton").pack(side="left", padx=(8, 0))
+        ttk.Button(row1, text=self.tr("button.add_card_single", "Dodaj wizytÄ‚Ĺ‚wkĂ„â„˘ (1 EPUB)"), command=self._add_card_single, style="Secondary.TButton").pack(side="left")
+        ttk.Button(row1, text=self.tr("button.add_card_batch", "Dodaj wizytÄ‚Ĺ‚wkĂ„â„˘ (folder)"), command=self._add_card_batch, style="Secondary.TButton").pack(side="left", padx=(8, 0))
 
         row2 = ttk.Frame(card)
         row2.pack(fill="x", pady=(8, 0))
-        ttk.Button(row2, text=self.tr("button.remove_cover", "UsuĹ„ okĹ‚adkÄ™"), command=self._remove_cover, style="Danger.TButton").pack(side="left")
-        ttk.Button(row2, text=self.tr("button.remove_graphics_pattern", "UsuĹ„ grafiki (pattern)"), command=self._remove_graphics_pattern, style="Danger.TButton").pack(side="left", padx=(8, 0))
+        ttk.Button(row2, text=self.tr("button.remove_cover", "UsuÄąâ€ž okÄąâ€šadkĂ„â„˘"), command=self._remove_cover, style="Danger.TButton").pack(side="left")
+        ttk.Button(row2, text=self.tr("button.remove_graphics_pattern", "UsuÄąâ€ž grafiki (pattern)"), command=self._remove_graphics_pattern, style="Danger.TButton").pack(side="left", padx=(8, 0))
 
         row3 = ttk.Frame(card)
         row3.pack(fill="x", pady=(8, 0))
         ttk.Button(row3, text=self.tr("button.open_text_editor", "Edytor tekstu EPUB"), command=self._open_text_editor, style="Secondary.TButton").pack(side="left")
-        ttk.Button(row3, text=self.tr("button.undo_last_operation", "Cofnij ostatniÄ… operacjÄ™"), command=self._undo_last_operation, style="Secondary.TButton").pack(side="left", padx=(8, 0))
+        ttk.Button(row3, text=self.tr("button.undo_last_operation", "Cofnij ostatniĂ„â€¦ operacjĂ„â„˘"), command=self._undo_last_operation, style="Secondary.TButton").pack(side="left", padx=(8, 0))
         ttk.Button(row3, text=self.tr("button.open_studio", "Studio Tools (12)"), command=self._open_studio_tools, style="Secondary.TButton").pack(side="left", padx=(8, 0))
 
     def _build_log_card(self, parent: ttk.Frame) -> None:
@@ -1925,8 +1925,8 @@ class TranslatorGUI:
         if self.current_project_id is None:
             return
         answer = self._ask_yes_no(
-            self.tr("confirm.project_delete_soft", "UsunÄ…Ä‡ projekt z listy? (historia zostanie zachowana)"),
-            title=self.tr("title.project_delete", "UsuĹ„ projekt"),
+            self.tr("confirm.project_delete_soft", "UsunĂ„â€¦Ă„â€ˇ projekt z listy? (historia zostanie zachowana)"),
+            title=self.tr("title.project_delete", "UsuÄąâ€ž projekt"),
         )
         if not answer:
             return
@@ -1939,8 +1939,8 @@ class TranslatorGUI:
         if self.current_project_id is None:
             return
         answer = self._ask_yes_no(
-            self.tr("confirm.project_delete_hard", "UsunÄ…Ä‡ projekt trwale razem z historiÄ… i TM powiÄ…zanym z projektem?"),
-            title=self.tr("title.project_delete_hard", "UsuĹ„ hard"),
+            self.tr("confirm.project_delete_hard", "UsunĂ„â€¦Ă„â€ˇ projekt trwale razem z historiĂ„â€¦ i TM powiĂ„â€¦zanym z projektem?"),
+            title=self.tr("title.project_delete_hard", "UsuÄąâ€ž hard"),
         )
         if not answer:
             return
@@ -1966,7 +1966,7 @@ class TranslatorGUI:
     def _run_next_pending_internal(self, show_messages: bool) -> bool:
         if self.proc is not None:
             if show_messages:
-                self._msg_info(self.tr("info.process_running", "Proces juĹĽ dziaĹ‚a."))
+                self._msg_info(self.tr("info.process_running", "Proces juÄąÄ˝ dziaÄąâ€ša."))
             return False
         nxt = self.db.get_next_pending_project()
         if nxt is None:
@@ -2065,7 +2065,7 @@ class TranslatorGUI:
             return
         payload = self.db.export_project(self.current_project_id)
         if payload is None:
-            self._msg_error(self.tr("err.project_export", "Nie udaĹ‚o siÄ™ wyeksportowaÄ‡ projektu."))
+            self._msg_error(self.tr("err.project_export", "Nie udaÄąâ€šo siĂ„â„˘ wyeksportowaĂ„â€ˇ projektu."))
             return
         path = filedialog.asksaveasfilename(
             title="Eksport projektu",
@@ -2164,7 +2164,7 @@ class TranslatorGUI:
     def _save_project(self, notify_missing: bool = False) -> None:
         if self.current_project_id is None:
             if notify_missing:
-                self._msg_info("Najpierw wybierz lub utwĂłrz projekt.")
+                self._msg_info("Najpierw wybierz lub utwÄ‚Ĺ‚rz projekt.")
             return
         step = self.mode_var.get().strip() or "translate"
         self._save_step_values(step)
@@ -2228,7 +2228,7 @@ class TranslatorGUI:
         try:
             self.db.create_profile(name, payload, is_builtin=0)
         except Exception as e:
-            self._msg_error(f"{self.tr('err.profile_save', 'Nie udaĹ‚o siÄ™ zapisaÄ‡ profilu:')}\n{e}")
+            self._msg_error(f"{self.tr('err.profile_save', 'Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ profilu:')}\n{e}")
             return
         self._refresh_profiles()
         self.profile_var.set(name)
@@ -2271,7 +2271,7 @@ class TranslatorGUI:
             else:
                 subprocess.Popen(["xdg-open", str(p)])
         except Exception as e:
-            self._msg_error(f"{self.tr('err.open_failed', 'Nie udaĹ‚o siÄ™ otworzyÄ‡:')}\n{e}")
+            self._msg_error(f"{self.tr('err.open_failed', 'Nie udaÄąâ€šo siĂ„â„˘ otworzyĂ„â€ˇ:')}\n{e}")
 
     def _open_url(self, url: str) -> None:
         u = (url or "").strip()
@@ -2280,7 +2280,7 @@ class TranslatorGUI:
         try:
             webbrowser.open(u, new=2)
         except Exception as e:
-            self._msg_error(f"{self.tr('err.open_failed', 'Nie udaĹ‚o siÄ™ otworzyÄ‡:')}\n{e}")
+            self._msg_error(f"{self.tr('err.open_failed', 'Nie udaÄąâ€šo siĂ„â„˘ otworzyĂ„â€ˇ:')}\n{e}")
 
     def _open_output(self) -> None:
         p = Path(self.output_epub_var.get().strip()) if self.output_epub_var.get().strip() else None
@@ -2330,8 +2330,8 @@ class TranslatorGUI:
     def _preview_and_confirm(self, title: str, lines: List[str]) -> bool:
         body = "\n".join(lines[:30])
         if len(lines) > 30:
-            body += f"\n... (+{len(lines)-30} wiÄ™cej)"
-        return self._ask_yes_no(body + "\n\n" + self.tr("confirm.execute_operation", "WykonaÄ‡ tÄ™ operacjÄ™?"), title=title)
+            body += f"\n... (+{len(lines)-30} wiĂ„â„˘cej)"
+        return self._ask_yes_no(body + "\n\n" + self.tr("confirm.execute_operation", "WykonaĂ„â€ˇ tĂ„â„˘ operacjĂ„â„˘?"), title=title)
 
     def _push_operation(self, op: Dict[str, Any]) -> None:
         self.op_history.append(op)
@@ -2340,7 +2340,7 @@ class TranslatorGUI:
 
     def _undo_last_operation(self) -> None:
         if not self.op_history:
-            self._msg_info("Brak operacji do cofniÄ™cia.")
+            self._msg_info("Brak operacji do cofniĂ„â„˘cia.")
             return
         op = self.op_history.pop()
         typ = str(op.get("type", ""))
@@ -2381,19 +2381,19 @@ class TranslatorGUI:
         if target is None:
             return
         img = filedialog.askopenfilename(
-            title="Wybierz obraz wizytĂłwki",
+            title="Wybierz obraz wizytÄ‚Ĺ‚wki",
             initialdir=str(self.workdir),
             filetypes=[("Obrazy", "*.png;*.jpg;*.jpeg;*.webp;*.gif"), ("All", "*.*")],
         )
         if not img:
             return
-        title = simple_prompt(self.root, "WizytĂłwka", "TytuĹ‚ wizytĂłwki:") or "Wizytowka"
+        title = simple_prompt(self.root, "WizytÄ‚Ĺ‚wka", "TytuÄąâ€š wizytÄ‚Ĺ‚wki:") or "Wizytowka"
         out = target.with_name(f"{target.stem}_wizytowka{target.suffix}")
         prev_out = self.output_epub_var.get().strip()
         try:
             prev = preview_add_front_matter(target, Path(img), title=title)
             ok = self._preview_and_confirm(
-                "PodglÄ…d: wizytĂłwka",
+                "PodglĂ„â€¦d: wizytÄ‚Ĺ‚wka",
                 [
                     f"EPUB: {prev['epub']}",
                     f"Obraz: {prev['image_file']}",
@@ -2412,27 +2412,27 @@ class TranslatorGUI:
             self._push_operation({"type": "new_file", "output": str(out), "prev_output": prev_out})
             self._set_status(self.tr("status.card_added", "Card added: {name}", name=out.name), "ok")
         except Exception as e:
-            self._msg_error(f"{self.tr('err.card_add_failed', 'Nie udaĹ‚o siÄ™ dodaÄ‡ wizytĂłwki:')}\n{e}")
+            self._msg_error(f"{self.tr('err.card_add_failed', 'Nie udaÄąâ€šo siĂ„â„˘ dodaĂ„â€ˇ wizytÄ‚Ĺ‚wki:')}\n{e}")
 
     def _add_card_batch(self) -> None:
         folder = filedialog.askdirectory(title="Folder z EPUB", initialdir=str(self.workdir))
         if not folder:
             return
         img = filedialog.askopenfilename(
-            title="Wybierz obraz wizytĂłwki",
+            title="Wybierz obraz wizytÄ‚Ĺ‚wki",
             initialdir=str(self.workdir),
             filetypes=[("Obrazy", "*.png;*.jpg;*.jpeg;*.webp;*.gif"), ("All", "*.*")],
         )
         if not img:
             return
-        title = simple_prompt(self.root, "WizytĂłwka", "TytuĹ‚ wizytĂłwki (batch):") or "Wizytowka"
+        title = simple_prompt(self.root, "WizytÄ‚Ĺ‚wka", "TytuÄąâ€š wizytÄ‚Ĺ‚wki (batch):") or "Wizytowka"
         epubs = sorted(Path(folder).glob("*.epub"))
         if not epubs:
             self._msg_info(self.tr("info.no_epubs_in_folder", "No EPUB files in folder."))
             return
         ok = self._preview_and_confirm(
-            "PodglÄ…d: batch wizytĂłwka",
-            [f"Folder: {folder}", f"Liczba EPUB: {len(epubs)}", f"Obraz: {img}", f"TytuĹ‚: {title}"]
+            "PodglĂ„â€¦d: batch wizytÄ‚Ĺ‚wka",
+            [f"Folder: {folder}", f"Liczba EPUB: {len(epubs)}", f"Obraz: {img}", f"TytuÄąâ€š: {title}"]
             + [f"- {p.name}" for p in epubs[:10]],
         )
         if not ok:
@@ -2460,11 +2460,11 @@ class TranslatorGUI:
         try:
             prev = preview_remove_images(target, remove_cover=True, pattern=None)
             ok = self._preview_and_confirm(
-                "PodglÄ…d: usuĹ„ okĹ‚adkÄ™",
+                "PodglĂ„â€¦d: usuÄąâ€ž okÄąâ€šadkĂ„â„˘",
                 [
                     f"EPUB: {prev['epub']}",
-                    f"Usuwane zasoby obrazĂłw: {prev['remove_paths_count']}",
-                    f"RozdziaĹ‚y dotkniÄ™te: {prev['affected_chapters_count']}",
+                    f"Usuwane zasoby obrazÄ‚Ĺ‚w: {prev['remove_paths_count']}",
+                    f"RozdziaÄąâ€šy dotkniĂ„â„˘te: {prev['affected_chapters_count']}",
                 ] + [f"- {x}" for x in prev["remove_paths"][:10]],
             )
             if not ok:
@@ -2478,13 +2478,13 @@ class TranslatorGUI:
             self._push_operation({"type": "new_file", "output": str(out), "prev_output": prev_out})
             self._set_status(self.tr("status.cover_removed", "Cover removed: {name}", name=out.name), "ok")
         except Exception as e:
-            self._msg_error(f"{self.tr('err.cover_remove_failed', 'Nie udaĹ‚o siÄ™ usunÄ…Ä‡ okĹ‚adki:')}\n{e}")
+            self._msg_error(f"{self.tr('err.cover_remove_failed', 'Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ okÄąâ€šadki:')}\n{e}")
 
     def _remove_graphics_pattern(self) -> None:
         target = self._pick_target_epub()
         if target is None:
             return
-        pattern = simple_prompt(self.root, "UsuĹ„ grafiki", "Regex dla nazw grafik/href:")
+        pattern = simple_prompt(self.root, "UsuÄąâ€ž grafiki", "Regex dla nazw grafik/href:")
         if not pattern:
             return
         out = target.with_name(f"{target.stem}_bez_grafik{target.suffix}")
@@ -2492,12 +2492,12 @@ class TranslatorGUI:
         try:
             prev = preview_remove_images(target, remove_cover=False, pattern=pattern)
             ok = self._preview_and_confirm(
-                "PodglÄ…d: usuĹ„ grafiki",
+                "PodglĂ„â€¦d: usuÄąâ€ž grafiki",
                 [
                     f"EPUB: {prev['epub']}",
                     f"Pattern: {pattern}",
-                    f"Usuwane zasoby obrazĂłw: {prev['remove_paths_count']}",
-                    f"RozdziaĹ‚y dotkniÄ™te: {prev['affected_chapters_count']}",
+                    f"Usuwane zasoby obrazÄ‚Ĺ‚w: {prev['remove_paths_count']}",
+                    f"RozdziaÄąâ€šy dotkniĂ„â„˘te: {prev['affected_chapters_count']}",
                 ] + [f"- {x}" for x in prev["remove_paths"][:10]],
             )
             if not ok:
@@ -2511,7 +2511,7 @@ class TranslatorGUI:
             self._push_operation({"type": "new_file", "output": str(out), "prev_output": prev_out})
             self._set_status(self.tr("status.graphics_removed", "Graphics removed (pattern): {name}", name=out.name), "ok")
         except Exception as e:
-            self._msg_error(f"{self.tr('err.graphics_remove_failed', 'Nie udaĹ‚o siÄ™ usunÄ…Ä‡ grafik:')}\n{e}")
+            self._msg_error(f"{self.tr('err.graphics_remove_failed', 'Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ grafik:')}\n{e}")
 
     def _open_text_editor(self) -> None:
         target = self._pick_target_epub()
@@ -2637,15 +2637,13 @@ class TranslatorGUI:
 
     def _find_translator(self) -> Path:
         candidates = [
-            self.workdir / "tlumacz_ollama_google_ollama.exe",
-            self.workdir / "tlumacz_ollama.exe",
-            self.workdir / "tlumacz_ollama_google_ollama.py",
-            self.workdir / "tlumacz_ollama.py",
+            self.workdir / "translation_engine.exe",
+            self.workdir / "translation_engine.py",
         ]
         for c in candidates:
             if c.exists():
                 return c
-        raise SystemExit("Nie znaleziono pliku tĹ‚umacza: tlumacz_ollama_google_ollama(.exe/.py) ani tlumacz_ollama(.exe/.py)")
+        raise SystemExit("Nie znaleziono pliku silnika translacji: translation_engine(.exe/.py).")
 
     def _translator_cmd_prefix(self) -> List[str]:
         # In packaged mode run bundled translator EXE, in dev mode run Python script.
@@ -2657,11 +2655,11 @@ class TranslatorGUI:
         return [py, "-u", self.translator_path.name]
 
     def _find_glossary(self, workdir: Path) -> Optional[Path]:
-        for name in ["SLOWNIK.txt", "slownik.txt", "Slownik.txt", "SĹ‚ownik.txt", "SĹOWNIK.txt"]:
+        for name in ["SLOWNIK.txt", "slownik.txt", "Slownik.txt", "SÄąâ€šownik.txt", "SÄąÂOWNIK.txt"]:
             p = workdir / name
             if p.exists():
                 return p
-        cands = sorted([p for p in workdir.glob("*.txt") if "slownik" in p.name.lower() or "sĹ‚ownik" in p.name.lower()])
+        cands = sorted([p for p in workdir.glob("*.txt") if "slownik" in p.name.lower() or "sÄąâ€šownik" in p.name.lower()])
         return cands[0] if cands else None
 
     def _on_input_selected(self) -> None:
@@ -2724,7 +2722,7 @@ class TranslatorGUI:
         self._save_step_values(step)
 
     def _refresh_models(self) -> None:
-        self.model_status.configure(text="Pobieram listÄ™ modeli...")
+        self.model_status.configure(text="Pobieram listĂ„â„˘ modeli...")
         provider = self.provider_var.get().strip()
         ollama_host = self.ollama_host_var.get().strip() or OLLAMA_HOST_DEFAULT
         google_key = self._google_api_key() if provider == "google" else ""
@@ -2735,7 +2733,7 @@ class TranslatorGUI:
                     models = list_ollama_models(ollama_host)
                 else:
                     if not google_key:
-                        raise ValueError(f"Podaj Google API key lub ustaw zmiennÄ… Ĺ›rodowiskowÄ… {GOOGLE_API_KEY_ENV}.")
+                        raise ValueError(f"Podaj Google API key lub ustaw zmiennĂ„â€¦ Äąâ€şrodowiskowĂ„â€¦ {GOOGLE_API_KEY_ENV}.")
                     models = list_google_models(google_key)
 
                 if not models:
@@ -2744,7 +2742,7 @@ class TranslatorGUI:
                 self.root.after(0, lambda: self._set_models(models))
             except Exception as e:
                 err_text = str(e)
-                self.root.after(0, lambda msg=err_text: self.model_status.configure(text=f"BĹ‚Ä…d: {msg}"))
+                self.root.after(0, lambda msg=err_text: self.model_status.configure(text=f"BÄąâ€šĂ„â€¦d: {msg}"))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2757,7 +2755,7 @@ class TranslatorGUI:
             return
         if self.model_var.get() not in models:
             self.model_var.set(models[0])
-        self.model_status.configure(text=f"ZaĹ‚adowano {len(models)} modeli")
+        self.model_status.configure(text=f"ZaÄąâ€šadowano {len(models)} modeli")
         self._update_command_preview()
 
     def _google_api_key(self) -> str:
@@ -2878,8 +2876,8 @@ class TranslatorGUI:
 
     def _validate(self) -> Optional[str]:
         required = [
-            ("WejĹ›ciowy EPUB", self.input_epub_var.get().strip()),
-            ("WyjĹ›ciowy EPUB", self.output_epub_var.get().strip()),
+            ("WejÄąâ€şciowy EPUB", self.input_epub_var.get().strip()),
+            ("WyjÄąâ€şciowy EPUB", self.output_epub_var.get().strip()),
             ("Prompt", self.prompt_var.get().strip()),
             ("Model", self.model_var.get().strip()),
         ]
@@ -2889,19 +2887,19 @@ class TranslatorGUI:
 
         in_file = Path(self.input_epub_var.get().strip())
         if not in_file.exists():
-            return f"Nie istnieje plik wejĹ›ciowy: {in_file}"
+            return f"Nie istnieje plik wejÄąâ€şciowy: {in_file}"
 
         prompt_file = Path(self.prompt_var.get().strip())
         if not prompt_file.exists():
             return f"Nie istnieje plik prompt: {prompt_file}"
 
         if self.provider_var.get() == "google" and not self._google_api_key():
-            return f"Dla Google podaj API key albo ustaw zmiennÄ… Ĺ›rodowiskowÄ… {GOOGLE_API_KEY_ENV}."
+            return f"Dla Google podaj API key albo ustaw zmiennĂ„â€¦ Äąâ€şrodowiskowĂ„â€¦ {GOOGLE_API_KEY_ENV}."
 
         if (self.source_lang_var.get().strip().lower() or "") not in SUPPORTED_TEXT_LANGS:
-            return "NieprawidĹ‚owy jÄ™zyk ĹşrĂłdĹ‚owy."
+            return "NieprawidÄąâ€šowy jĂ„â„˘zyk ÄąĹźrÄ‚Ĺ‚dÄąâ€šowy."
         if (self.target_lang_var.get().strip().lower() or "") not in SUPPORTED_TEXT_LANGS:
-            return "NieprawidĹ‚owy jÄ™zyk docelowy."
+            return "NieprawidÄąâ€šowy jĂ„â„˘zyk docelowy."
 
         for num_label, v in [
             ("batch-max-segs", self.batch_max_segs_var.get().strip()),
@@ -2913,7 +2911,7 @@ class TranslatorGUI:
             try:
                 int(v)
             except Exception:
-                return f"Pole {num_label} musi byÄ‡ liczbÄ… caĹ‚kowitÄ…."
+                return f"Pole {num_label} musi byĂ„â€ˇ liczbĂ„â€¦ caÄąâ€škowitĂ„â€¦."
 
         for num_label, v in [
             ("sleep", self.sleep_var.get().strip()),
@@ -2922,7 +2920,7 @@ class TranslatorGUI:
             try:
                 float(v.replace(",", "."))
             except Exception:
-                return f"Pole {num_label} musi byÄ‡ liczbÄ…."
+                return f"Pole {num_label} musi byĂ„â€ˇ liczbĂ„â€¦."
 
         return None
 
@@ -3121,7 +3119,7 @@ class TranslatorGUI:
                         try:
                             self._sync_series_terms_after_run(runner_db, self.current_project_id)
                         except Exception as e:
-                            self.log_queue.put(f"[SERIES] Pominięto sync słownika serii: {e}\n")
+                            self.log_queue.put(f"[SERIES] PominiÄ™to sync sĹ‚ownika serii: {e}\n")
                     log_event_jsonl(
                         self.events_log_path,
                         "run_finish",
@@ -3410,7 +3408,7 @@ class TranslatorGUI:
                 self._set_status(self.tr("status.settings_saved", "Settings saved (SQLite)"), "ready")
         except Exception as e:
             if not silent:
-                self._msg_error(f"Nie udaĹ‚o siÄ™ zapisaÄ‡ ustawieĹ„:\n{e}")
+                self._msg_error(f"Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ ustawieÄąâ€ž:\n{e}")
 
     def _load_settings(self, silent: bool = False) -> None:
         try:
@@ -3423,7 +3421,7 @@ class TranslatorGUI:
                 self._set_status(self.tr("status.settings_loaded", "Settings loaded (SQLite)"), "ready")
         except Exception as e:
             if not silent:
-                self._msg_error(f"Nie udaĹ‚o siÄ™ wczytaÄ‡ ustawieĹ„:\n{e}")
+                self._msg_error(f"Nie udaÄąâ€šo siĂ„â„˘ wczytaĂ„â€ˇ ustawieÄąâ€ž:\n{e}")
 
     def _on_close(self) -> None:
         try:
@@ -3514,9 +3512,9 @@ class TextEditorWindow:
             self.gui.tr("editor.save_epub", "Save EPUB"): self.gui.tr("tip.editor.save_epub", "Saves chapter changes to EPUB and creates backup."),
         }
         object_tip = {
-            id(self.chapter_box): "WybĂłr rozdziaĹ‚u do edycji.",
-            id(self.segment_box): "WybĂłr segmentu do podglÄ…du/edycji.",
-            id(self.editor): "Edytor treĹ›ci segmentu. To pole modyfikuje docelowy tekst.",
+            id(self.chapter_box): "WybÄ‚Ĺ‚r rozdziaÄąâ€šu do edycji.",
+            id(self.segment_box): "WybÄ‚Ĺ‚r segmentu do podglĂ„â€¦du/edycji.",
+            id(self.editor): "Edytor treÄąâ€şci segmentu. To pole modyfikuje docelowy tekst.",
         }
 
         def resolver(widget: tk.Misc) -> Optional[str]:
@@ -3531,7 +3529,7 @@ class TextEditorWindow:
                 return text_tip[t]
             cls = str(widget.winfo_class())
             if cls in {"TEntry", "Entry"}:
-                return "Pole wejĹ›ciowe w edytorze."
+                return "Pole wejÄąâ€şciowe w edytorze."
             return None
 
         self._tooltips = install_tooltips(self.win, resolver)
@@ -3605,3 +3603,4 @@ class TextEditorWindow:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

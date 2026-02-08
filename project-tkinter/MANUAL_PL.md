@@ -526,9 +526,9 @@ Po co:
   - `app_main.py`
   - `app_gui_classic.py`
   - `app_gui_horizon.py`
-  - `start.py` (alias kompatybilnosci)
-  - `start_horizon.py` (alias kompatybilnosci)
-  - `tlumacz_ollama.py`
+  - `launcher_classic.py`
+  - `launcher_horizon.py`
+  - `translation_engine.py`
   - `project_db.py`
   - `epub_enhancer.py`
   - `studio_suite.py`
