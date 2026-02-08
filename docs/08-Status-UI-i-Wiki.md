@@ -14,11 +14,13 @@ Ekran: sekcja `Projekt i profile` (lewy panel, u gory).
 Najwazniejsze elementy:
 - licznik statusow wszystkich projektow: `idle/pending/running/error`,
 - lista statusu projektow z podsumowaniem ksiazki i etapow,
+- statusy etapow `T/R` sa ujednolicone miedzy aplikacjami: `none/pending/running/ok/error`,
 - format wpisu:
   - `ks=<book> | T:<done>/<total> <status> | R:<done>/<total> <status> | -> <next_action>`.
 
 Dodatkowo:
-- `Historia runow` pokazuje ostatnie uruchomienia aktywnego projektu,
+- panel `Ostatnie akcje (timeline projektu)` pokazuje ostatnie uruchomienia aktywnego projektu,
+- linia `Metryki runu` pokazuje czas, segmenty, cache/TM i reuse-rate dla ostatniego runu,
 - sekcja `Uruchomienie` pokazuje biezacy status procesu i postep.
 
 ## Gdzie widac postep projektu (Web Desktop)
@@ -26,6 +28,8 @@ Dodatkowo:
 Ekran: gora aplikacji web-desktop (`project-web-desktop`):
 - rozwijana lista projektu zawiera skrot statusu i podsumowanie etapow,
 - pole `Podsumowanie projektu` pokazuje ksiazke + T/R + nastepna akcje.
+- panel `Metryki runu` pokazuje czas, segmenty, cache/TM i reuse-rate.
+- panel `Ostatnie akcje (timeline projektu)` pokazuje ostatnie runy.
 
 Format jest spojny z wariantem Tkinter:
 - `ks=<book> | T:<done>/<total> <status> | R:<done>/<total> <status> | -> <next_action>`.
