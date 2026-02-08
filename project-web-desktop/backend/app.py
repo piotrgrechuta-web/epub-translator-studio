@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -87,6 +88,12 @@ def _read_version() -> str:
 
 
 APP_VERSION = _read_version()
+GLOBAL_PROGRESS_RE = re.compile(r"\bGLOBAL\s+(\d+)\s*/\s*(\d+)\b")
+TOTAL_SEGMENTS_RE = re.compile(r"Segmenty\s+(?:łącznie|lacznie)\s*:\s*(\d+)", re.IGNORECASE)
+CACHE_SEGMENTS_RE = re.compile(r"Segmenty\s+z\s+cache\s*:\s*(\d+)", re.IGNORECASE)
+CHAPTER_CACHE_TM_RE = re.compile(r"\(cache:\s*(\d+)\s*,\s*tm:\s*(\d+)\)", re.IGNORECASE)
+METRICS_BLOB_RE = re.compile(r"metrics\[(.*?)\]", re.IGNORECASE)
+METRICS_KV_RE = re.compile(r"([a-zA-Z_]+)\s*=\s*([^;]+)")
 
 
 app = FastAPI(title="Translator Studio API", version=APP_VERSION)
@@ -287,12 +294,191 @@ def _cmd_validate(epub: str, tags: str) -> List[str]:
     return build_validation_command(["python", "-u", str(TRANSLATOR)], epub, tags)
 
 
+def _normalize_project_status(value: str) -> str:
+    key = str(value or "idle").strip().lower() or "idle"
+    aliases = {
+        "none": "idle",
+        "ready": "idle",
+        "queued": "pending",
+        "queue": "pending",
+        "needs_review": "error",
+        "failed": "error",
+        "fail": "error",
+        "done": "ok",
+        "success": "ok",
+    }
+    if key in {"idle", "pending", "running", "error", "ok"}:
+        return key
+    return aliases.get(key, "idle")
+
+
+def _normalize_stage_status(value: str) -> str:
+    key = str(value or "none").strip().lower() or "none"
+    aliases = {
+        "queued": "pending",
+        "queue": "pending",
+        "in_progress": "running",
+        "done": "ok",
+        "success": "ok",
+        "fail": "error",
+        "failed": "error",
+    }
+    if key in {"none", "idle", "pending", "running", "ok", "error"}:
+        return key
+    return aliases.get(key, "none")
+
+
+def _new_runtime_stats() -> Dict[str, Any]:
+    return {"done": 0, "total": 0, "cache_hits": 0, "tm_hits": 0}
+
+
+def _consume_runtime_log_line(stats: Dict[str, Any], line: str, seen_tm_lines: set[str]) -> None:
+    s = str(line or "").strip()
+    if not s:
+        return
+    m_progress = GLOBAL_PROGRESS_RE.search(s)
+    if m_progress:
+        try:
+            stats["done"] = max(0, int(m_progress.group(1)))
+            stats["total"] = max(0, int(m_progress.group(2)))
+        except Exception:
+            pass
+    m_total = TOTAL_SEGMENTS_RE.search(s)
+    if m_total:
+        try:
+            stats["total"] = max(int(stats.get("total", 0) or 0), int(m_total.group(1)))
+        except Exception:
+            pass
+    m_cache = CACHE_SEGMENTS_RE.search(s)
+    if m_cache:
+        try:
+            stats["cache_hits"] = max(0, int(m_cache.group(1)))
+        except Exception:
+            pass
+    m_tm = CHAPTER_CACHE_TM_RE.search(s)
+    if m_tm and s not in seen_tm_lines:
+        seen_tm_lines.add(s)
+        try:
+            stats["tm_hits"] = int(stats.get("tm_hits", 0) or 0) + max(0, int(m_tm.group(2)))
+        except Exception:
+            pass
+
+
+def _finalize_runtime_stats(stats: Dict[str, Any], started_at: Optional[float]) -> Dict[str, Any]:
+    out = dict(stats)
+    done = max(0, int(out.get("done", 0) or 0))
+    total = max(0, int(out.get("total", 0) or 0))
+    cache_hits = max(0, int(out.get("cache_hits", 0) or 0))
+    tm_hits = max(0, int(out.get("tm_hits", 0) or 0))
+    reuse_hits = cache_hits + tm_hits
+    reuse_rate = (reuse_hits / total) * 100.0 if total > 0 else 0.0
+    if started_at is not None:
+        dur_s = int(max(0.0, time.time() - started_at))
+    else:
+        dur_s = max(0, int(out.get("dur_s", 0) or 0))
+    out.update(
+        {
+            "done": done,
+            "total": total,
+            "cache_hits": cache_hits,
+            "tm_hits": tm_hits,
+            "reuse_hits": reuse_hits,
+            "reuse_rate": reuse_rate,
+            "dur_s": dur_s,
+        }
+    )
+    return out
+
+
+def _metrics_blob(stats: Dict[str, Any]) -> str:
+    done = max(0, int(stats.get("done", 0) or 0))
+    total = max(0, int(stats.get("total", 0) or 0))
+    cache_hits = max(0, int(stats.get("cache_hits", 0) or 0))
+    tm_hits = max(0, int(stats.get("tm_hits", 0) or 0))
+    reuse_hits = max(0, int(stats.get("reuse_hits", cache_hits + tm_hits) or 0))
+    reuse_rate = float(stats.get("reuse_rate", 0.0) or 0.0)
+    dur_s = max(0, int(stats.get("dur_s", 0) or 0))
+    return (
+        f"metrics[dur_s={dur_s};done={done};total={total};cache_hits={cache_hits};"
+        f"tm_hits={tm_hits};reuse_hits={reuse_hits};reuse_rate={reuse_rate:.1f}]"
+    )
+
+
+def _parse_metrics_blob(message: str) -> Dict[str, float]:
+    out: Dict[str, float] = {}
+    text = str(message or "")
+    m = METRICS_BLOB_RE.search(text)
+    if not m:
+        return out
+    for key, raw in METRICS_KV_RE.findall(m.group(1)):
+        k = str(key).strip()
+        v = str(raw).strip().rstrip("%")
+        if not k:
+            continue
+        try:
+            if "." in v:
+                out[k] = float(v)
+            else:
+                out[k] = float(int(v))
+        except Exception:
+            continue
+    return out
+
+
+def _run_metrics_from_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    started = int(row.get("started_at", 0) or 0)
+    finished = int(row.get("finished_at", 0) or 0) if row.get("finished_at") is not None else 0
+    duration_s = max(0, finished - started) if started and finished else None
+    parsed = _parse_metrics_blob(str(row.get("message") or ""))
+    done = max(0, int(row.get("global_done", 0) or int(parsed.get("done", 0) or 0)))
+    total = max(0, int(row.get("global_total", 0) or int(parsed.get("total", 0) or 0)))
+    cache_hits = max(0, int(parsed.get("cache_hits", 0) or 0))
+    tm_hits = max(0, int(parsed.get("tm_hits", 0) or 0))
+    reuse_hits = max(0, int(parsed.get("reuse_hits", cache_hits + tm_hits) or 0))
+    reuse_rate = float(parsed.get("reuse_rate", 0.0) or 0.0)
+    if total > 0 and reuse_rate <= 0.0 and reuse_hits > 0:
+        reuse_rate = (reuse_hits / total) * 100.0
+    if duration_s is None:
+        dur_alt = int(parsed.get("dur_s", 0) or 0)
+        duration_s = dur_alt if dur_alt > 0 else None
+    return {
+        "duration_s": duration_s,
+        "done": done,
+        "total": total,
+        "cache_hits": cache_hits,
+        "tm_hits": tm_hits,
+        "reuse_hits": reuse_hits,
+        "reuse_rate": round(reuse_rate, 1),
+    }
+
+
+def _serialize_run(row: Any) -> Dict[str, Any]:
+    r = dict(row)
+    out = {
+        "id": int(r.get("id", 0) or 0),
+        "project_id": int(r.get("project_id", 0) or 0),
+        "step": str(r.get("step") or "-"),
+        "status": _normalize_stage_status(str(r.get("status") or "none")),
+        "command_text": str(r.get("command_text") or ""),
+        "started_at": int(r.get("started_at", 0) or 0),
+        "finished_at": int(r.get("finished_at", 0) or 0) if r.get("finished_at") is not None else None,
+        "global_done": int(r.get("global_done", 0) or 0),
+        "global_total": int(r.get("global_total", 0) or 0),
+        "message": str(r.get("message") or ""),
+    }
+    out["metrics"] = _run_metrics_from_row(out)
+    return out
+
+
 def _counts(rows: List[Any]) -> Dict[str, int]:
     c = {"idle": 0, "pending": 0, "running": 0, "error": 0}
     for r in rows:
-        st = str(r["status"] or "idle")
-        if st == "deleted":
+        raw = str(r["status"] or "idle")
+        if raw == "deleted":
             continue
+        st = _normalize_project_status(raw)
+        if st == "ok":
+            st = "idle"
         c[st] = c.get(st, 0) + 1
     return c
 
@@ -320,7 +506,7 @@ def _stage_payload(stage: Any) -> Dict[str, Any]:
             "is_complete": False,
         }
     return {
-        "status": str(stage.get("status") or "none"),
+        "status": _normalize_stage_status(str(stage.get("status") or "none")),
         "done": int(stage.get("done", 0) or 0),
         "total": int(stage.get("total", 0) or 0),
         "message": str(stage.get("message") or ""),
@@ -333,6 +519,7 @@ def _stage_payload(stage: Any) -> Dict[str, Any]:
 
 def _project_payload(db: ProjectDB, row: Any) -> Dict[str, Any]:
     data = dict(row)
+    data["status"] = _normalize_project_status(str(row["status"] or "idle"))
     pt = int(row["profile_translate_id"]) if row["profile_translate_id"] is not None else None
     pe = int(row["profile_edit_id"]) if row["profile_edit_id"] is not None else None
     rt = db.get_profile(pt) if pt is not None else None
@@ -488,7 +675,7 @@ def _default_project_values(db: ProjectDB, source: Path, src_lang: str, tgt_lang
     }
 
 
-def _finish_db_run(meta: Optional[Dict[str, Any]], code: int) -> None:
+def _finish_db_run(meta: Optional[Dict[str, Any]], code: int, run_stats: Optional[Dict[str, Any]] = None) -> None:
     if not meta:
         return
     if meta.get("run_id") is None or meta.get("db_path") is None:
@@ -496,8 +683,16 @@ def _finish_db_run(meta: Optional[Dict[str, Any]], code: int) -> None:
     db = ProjectDB(Path(str(meta["db_path"])))
     try:
         status = "ok" if int(code) == 0 else "error"
-        msg = "RUN OK" if status == "ok" else f"RUN ERROR (exit={code})"
-        db.finish_run(int(meta["run_id"]), status=status, message=msg)
+        stats = _finalize_runtime_stats(run_stats or _new_runtime_stats(), None)
+        msg_prefix = "RUN OK" if status == "ok" else f"RUN ERROR (exit={code})"
+        msg = f"{msg_prefix} | {_metrics_blob(stats)}"
+        db.finish_run(
+            int(meta["run_id"]),
+            status=status,
+            message=msg,
+            global_done=int(stats.get("done", 0) or 0),
+            global_total=int(stats.get("total", 0) or 0),
+        )
     finally:
         db.close()
 
@@ -512,6 +707,8 @@ class RunManager:
         self.log: List[str] = []
         self.max_log = 8000
         self.meta: Optional[Dict[str, Any]] = None
+        self.run_stats: Dict[str, Any] = _new_runtime_stats()
+        self._tm_metric_lines: set[str] = set()
 
     def append(self, line: str) -> None:
         with self.lock:
@@ -534,6 +731,8 @@ class RunManager:
             self.log.append("=== START ===\n")
             self.log.append("Command: " + " ".join(cmd) + "\n\n")
             self.meta = dict(meta) if meta else None
+            self.run_stats = _new_runtime_stats()
+            self._tm_metric_lines.clear()
             self.proc = subprocess.Popen(
                 cmd,
                 cwd=str(BASE_DIR),
@@ -553,9 +752,13 @@ class RunManager:
         if p is None or p.stdout is None:
             return
         local_meta: Optional[Dict[str, Any]] = None
+        local_stats: Dict[str, Any] = _new_runtime_stats()
+        local_started_at: Optional[float] = None
         try:
             for line in p.stdout:
                 self.append(line)
+                with self.lock:
+                    _consume_runtime_log_line(self.run_stats, line, self._tm_metric_lines)
             code = p.wait()
             self.append(f"\n=== FINISH (exit={code}) ===\n")
             with self.lock:
@@ -563,8 +766,13 @@ class RunManager:
                 self.proc = None
                 self.mode = "idle"
                 local_meta = dict(self.meta) if self.meta else None
+                local_stats = dict(self.run_stats)
+                local_started_at = self.started_at
+                self.started_at = None
+                self.run_stats = _new_runtime_stats()
+                self._tm_metric_lines.clear()
                 self.meta = None
-            _finish_db_run(local_meta, code)
+            _finish_db_run(local_meta, code, _finalize_runtime_stats(local_stats, local_started_at))
         except Exception as e:
             self.append(f"\n[runner-error] {e}\n")
             with self.lock:
@@ -572,8 +780,13 @@ class RunManager:
                 self.proc = None
                 self.mode = "idle"
                 local_meta = dict(self.meta) if self.meta else None
+                local_stats = dict(self.run_stats)
+                local_started_at = self.started_at
+                self.started_at = None
+                self.run_stats = _new_runtime_stats()
+                self._tm_metric_lines.clear()
                 self.meta = None
-            _finish_db_run(local_meta, -1)
+            _finish_db_run(local_meta, -1, _finalize_runtime_stats(local_stats, local_started_at))
 
     def stop(self) -> bool:
         with self.lock:
@@ -590,6 +803,7 @@ class RunManager:
 
     def snapshot(self, tail: int = 400) -> Dict[str, Any]:
         with self.lock:
+            stats = _finalize_runtime_stats(self.run_stats, self.started_at)
             return {
                 "running": self.proc is not None,
                 "mode": self.mode,
@@ -598,6 +812,7 @@ class RunManager:
                 "log": "".join(self.log[-tail:]),
                 "log_lines": len(self.log),
                 "run_meta": dict(self.meta) if self.meta else None,
+                "run_stats": stats,
             }
 
 
@@ -685,7 +900,7 @@ def projects_list() -> Dict[str, Any]:
                 {
                     "id": int(r["id"]),
                     "name": str(r["name"] or ""),
-                    "status": str(r["status"] or "idle"),
+                    "status": _normalize_project_status(str(r["status"] or "idle")),
                     "active_step": _step(str(r["active_step"] or "translate")),
                     "input_epub": str(r["input_epub"] or ""),
                     "source_lang": str(r["source_lang"] or "en"),
@@ -724,7 +939,7 @@ def projects_create(req: ProjectCreateRequest) -> Dict[str, Any]:
             "ok": True,
             "project": _project_payload(db, row),
             "state": st.model_dump(),
-            "runs": [dict(r) for r in db.recent_runs(int(pid), limit=20)],
+            "runs": [_serialize_run(r) for r in db.recent_runs(int(pid), limit=20)],
             "counts": _counts(db.list_projects()),
         }
     finally:
@@ -751,7 +966,7 @@ def projects_select(req: ProjectSelectRequest) -> Dict[str, Any]:
             "ok": True,
             "project": _project_payload(db, row),
             "state": st.model_dump(),
-            "runs": [dict(r) for r in db.recent_runs(int(req.project_id), limit=20)],
+            "runs": [_serialize_run(r) for r in db.recent_runs(int(req.project_id), limit=20)],
             "counts": _counts(db.list_projects()),
         }
     finally:
@@ -867,7 +1082,7 @@ def runs_recent(project_id: int, limit: int = 20) -> Dict[str, Any]:
     db, _ = _open_db()
     try:
         lim = max(1, min(int(limit), 200))
-        return {"runs": [dict(r) for r in db.recent_runs(int(project_id), limit=lim)]}
+        return {"runs": [_serialize_run(r) for r in db.recent_runs(int(project_id), limit=lim)]}
     finally:
         db.close()
 

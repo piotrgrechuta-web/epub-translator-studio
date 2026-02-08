@@ -48,6 +48,11 @@ Zrobione:
 ## Proponowany kolejny etap
 
 ## Etap 6: Spojnosc komunikatow i telemetry UX
-- standaryzacja slownictwa statusow (`ok/warn/error`) miedzy Tkinter i web-desktop,
-- panel "ostatnie akcje" (inline timeline) zamiast czesci popupow,
-- licznik czasu operacji i mini-metryki (czas runu, hit-rate cache/TM) bez wchodzenia do logu.
+- [x] Standaryzacja slownictwa statusow miedzy Tkinter i web-desktop.
+- [x] Panel "ostatnie akcje" (inline timeline) dla aktywnego projektu.
+- [x] Mini-metryki runu (czas, segmenty, cache/TM, reuse-rate) widoczne w UI.
+
+Zrobione:
+- statusy etapow (`none/pending/running/ok/error`) sa spojne miedzy wariantami UI,
+- oba UI pokazuja timeline ostatnich uruchomien projektu,
+- oba UI pokazuja metryki ostatniego runu bez wchodzenia do surowego logu.

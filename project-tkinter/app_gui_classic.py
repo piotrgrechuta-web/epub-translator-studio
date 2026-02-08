@@ -60,6 +60,11 @@ REPO_URL = "https://github.com/piotrgrechuta-web/epu2pl"
 GOOGLE_KEYRING_SERVICE = "epub-translator-studio"
 GOOGLE_KEYRING_USER = "google_api_key"
 GLOBAL_PROGRESS_RE = re.compile(r"GLOBAL\s+(\d+)\s*/\s*(\d+)\s*\(([^)]*)\)\s*\|\s*(.*)")
+TOTAL_SEGMENTS_RE = re.compile(r"Segmenty\s+(?:łącznie|lacznie)\s*:\s*(\d+)", re.IGNORECASE)
+CACHE_SEGMENTS_RE = re.compile(r"Segmenty\s+z\s+cache\s*:\s*(\d+)", re.IGNORECASE)
+CHAPTER_CACHE_TM_RE = re.compile(r"\(cache:\s*(\d+)\s*,\s*tm:\s*(\d+)\)", re.IGNORECASE)
+METRICS_BLOB_RE = re.compile(r"metrics\[(.*?)\]", re.IGNORECASE)
+METRICS_KV_RE = re.compile(r"([a-zA-Z_]+)\s*=\s*([^;]+)")
 LOG = logging.getLogger(__name__)
 
 
@@ -182,6 +187,9 @@ class TranslatorGUI:
         self._inline_notice_after_id: Optional[str] = None
         self._inline_notice_label: Optional[ttk.Label] = None
         self.ui_tokens: Dict[str, Any] = {}
+        self._runtime_metrics: Dict[str, int] = {}
+        self._runtime_metric_lines: set[str] = set()
+        self._reset_runtime_metrics()
 
         self._configure_main_window()
         self._setup_theme()
@@ -215,6 +223,96 @@ class TranslatorGUI:
 
     def _configure_main_window(self) -> None:
         self._configure_window_bounds(self.root, preferred_w=1200, preferred_h=820, min_w=760, min_h=520, maximize=True)
+
+    def _reset_runtime_metrics(self) -> None:
+        self._runtime_metrics = {
+            "total_segments": 0,
+            "cache_hits": 0,
+            "tm_hits": 0,
+        }
+        self._runtime_metric_lines.clear()
+
+    def _format_duration(self, seconds: Optional[int]) -> str:
+        if seconds is None:
+            return "-"
+        sec = max(0, int(seconds))
+        h, rem = divmod(sec, 3600)
+        m, s = divmod(rem, 60)
+        if h > 0:
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        return f"{m:02d}:{s:02d}"
+
+    def _runtime_metrics_blob(self) -> str:
+        total = int(self.global_total or self._runtime_metrics.get("total_segments", 0) or 0)
+        done = int(self.global_done or 0)
+        cache_hits = int(self._runtime_metrics.get("cache_hits", 0) or 0)
+        tm_hits = int(self._runtime_metrics.get("tm_hits", 0) or 0)
+        reuse_hits = cache_hits + tm_hits
+        reuse_rate = (reuse_hits / total) * 100.0 if total > 0 else 0.0
+        dur_s = int(max(0.0, time.time() - self.run_started_at)) if self.run_started_at is not None else 0
+        return (
+            f"metrics[dur_s={dur_s};done={done};total={total};cache_hits={cache_hits};"
+            f"tm_hits={tm_hits};reuse_hits={reuse_hits};reuse_rate={reuse_rate:.1f}]"
+        )
+
+    def _parse_metrics_blob(self, message: str) -> Dict[str, float]:
+        out: Dict[str, float] = {}
+        text = str(message or "")
+        m = METRICS_BLOB_RE.search(text)
+        if not m:
+            return out
+        for key, raw in METRICS_KV_RE.findall(m.group(1)):
+            k = str(key).strip()
+            v = str(raw).strip().rstrip("%")
+            if not k:
+                continue
+            try:
+                if "." in v:
+                    out[k] = float(v)
+                else:
+                    out[k] = float(int(v))
+            except Exception:
+                continue
+        return out
+
+    def _update_live_run_metrics(self) -> None:
+        if self.run_started_at is None:
+            return
+        total = int(self.global_total or self._runtime_metrics.get("total_segments", 0) or 0)
+        done = int(self.global_done or 0)
+        cache_hits = int(self._runtime_metrics.get("cache_hits", 0) or 0)
+        tm_hits = int(self._runtime_metrics.get("tm_hits", 0) or 0)
+        reuse_hits = cache_hits + tm_hits
+        reuse_rate = (reuse_hits / total) * 100.0 if total > 0 else 0.0
+        dur_s = int(max(0.0, time.time() - self.run_started_at))
+        self.run_metrics_var.set(
+            f"Metryki runu: czas={self._format_duration(dur_s)} | seg={done}/{total} | "
+            f"cache={cache_hits} | tm={tm_hits} | reuse={reuse_rate:.1f}%"
+        )
+
+    def _collect_runtime_metrics_from_log(self, line: str) -> None:
+        s = str(line or "").strip()
+        if not s:
+            return
+        m_total = TOTAL_SEGMENTS_RE.search(s)
+        if m_total:
+            try:
+                self._runtime_metrics["total_segments"] = max(0, int(m_total.group(1)))
+            except Exception:
+                pass
+        m_cache = CACHE_SEGMENTS_RE.search(s)
+        if m_cache:
+            try:
+                self._runtime_metrics["cache_hits"] = max(0, int(m_cache.group(1)))
+            except Exception:
+                pass
+        m_tm = CHAPTER_CACHE_TM_RE.search(s)
+        if m_tm and s not in self._runtime_metric_lines:
+            self._runtime_metric_lines.add(s)
+            try:
+                self._runtime_metrics["tm_hits"] += max(0, int(m_tm.group(2)))
+            except Exception:
+                pass
 
     def _configure_window_bounds(
         self,
@@ -505,6 +603,7 @@ class TranslatorGUI:
         self.inline_notice_var = tk.StringVar(value="")
         self.progress_text_var = tk.StringVar(value=self.tr("status.progress.zero", "Postęp: 0 / 0"))
         self.phase_var = tk.StringVar(value=self.tr("status.phase.wait", "Etap: oczekiwanie"))
+        self.run_metrics_var = tk.StringVar(value=self.tr("status.metrics.none", "Metryki runu: brak"))
         self.progress_value_var = tk.DoubleVar(value=0.0)
         self.global_done = 0
         self.global_total = 0
@@ -1163,7 +1262,8 @@ class TranslatorGUI:
         card.pack(fill="both", expand=True)
         hist = ttk.Frame(card)
         hist.pack(fill="x", pady=(0, 8))
-        ttk.Label(hist, text=self.tr("history.title", "Historia projektu (ostatnie uruchomienia):"), style="Sub.TLabel").pack(anchor="w")
+        ttk.Label(hist, text=self.tr("history.title", "Ostatnie akcje (timeline projektu):"), style="Sub.TLabel").pack(anchor="w")
+        ttk.Label(hist, textvariable=self.run_metrics_var, style="Sub.TLabel").pack(anchor="w", pady=(2, 4))
         self.history_box = tk.Listbox(hist, height=5)
         self.history_box.pack(fill="x")
         self.history_box.configure(
@@ -1244,16 +1344,40 @@ class TranslatorGUI:
         self._on_project_selected()
         self._refresh_status_panel(rows)
 
-    def _stage_status_label(self, value: str) -> str:
-        m = {
-            "none": "-",
-            "ok": "ok",
-            "error": "err",
-            "running": "run",
-            "pending": "q",
+    def _normalize_project_status(self, value: str) -> str:
+        key = str(value or "idle").strip().lower() or "idle"
+        aliases = {
+            "none": "idle",
+            "ready": "idle",
+            "queued": "pending",
+            "queue": "pending",
+            "needs_review": "error",
+            "failed": "error",
+            "fail": "error",
+            "done": "ok",
+            "success": "ok",
         }
-        key = str(value or "none").strip().lower()
-        return m.get(key, key or "-")
+        if key in {"idle", "pending", "running", "error", "ok"}:
+            return key
+        return aliases.get(key, "idle")
+
+    def _normalize_stage_status(self, value: str) -> str:
+        key = str(value or "none").strip().lower() or "none"
+        aliases = {
+            "queued": "pending",
+            "queue": "pending",
+            "in_progress": "running",
+            "done": "ok",
+            "success": "ok",
+            "fail": "error",
+            "failed": "error",
+        }
+        if key in {"none", "idle", "pending", "running", "ok", "error"}:
+            return key
+        return aliases.get(key, "none")
+
+    def _stage_status_label(self, value: str) -> str:
+        return self._normalize_stage_status(value)
 
     def _next_action_label(self, value: str) -> str:
         m = {
@@ -1282,16 +1406,13 @@ class TranslatorGUI:
         counts = {"idle": 0, "pending": 0, "running": 0, "error": 0}
         self.status_list.delete(0, "end")
         for r in rows:
-            st = str(r["status"] or "idle")
-            if st == "deleted":
+            raw_status = str(r.get("status") or "idle")
+            if raw_status == "deleted":
                 continue
-            if st in counts:
-                counts[st] += 1
-            else:
-                counts.setdefault(st, 0)
-                counts[st] += 1
+            st = self._normalize_project_status(raw_status)
+            counts[st] = counts.get(st, 0) + 1
             name = str(r.get("name") or "-")
-            step = str(r.get("active_step") or "-")
+            step = str(r.get("active_step") or "-").strip().lower() or "-"
             book = str(r.get("book") or "-")
             name_short = self._short_text(name, 34)
             book_short = self._short_text(book, 44)
@@ -1306,8 +1427,8 @@ class TranslatorGUI:
             next_action = self._next_action_label(str(r.get("next_action") or ""))
             self.status_list.insert(
                 "end",
-                f"{name_short} | {st}/{step} | ks={book_short} | T:{t_done}/{t_total} {t_status} | "
-                f"R:{r_done}/{r_total} {r_status} | -> {next_action}",
+                f"{name_short} | {st}/{step} | ks={book_short} | "
+                f"T:{t_done}/{t_total} {t_status} | R:{r_done}/{r_total} {r_status} | -> {next_action}",
             )
         self.status_counts_var.set(
             f"idle={counts.get('idle',0)} | pending={counts.get('pending',0)} | "
@@ -1483,14 +1604,42 @@ class TranslatorGUI:
     def _refresh_run_history(self) -> None:
         self.history_box.delete(0, "end")
         if self.current_project_id is None:
+            self.run_metrics_var.set(self.tr("status.metrics.none", "Metryki runu: brak"))
             return
         rows = self.db.recent_runs(self.current_project_id, limit=20)
         for r in rows:
+            step = str(r["step"] or "-")
+            status = self._normalize_stage_status(str(r["status"] or "none"))
+            done = int(r["global_done"] or 0)
+            total = int(r["global_total"] or 0)
+            msg = str(r["message"] or "")
             line = (
                 f"[{self._format_ts(int(r['started_at']))}] "
-                f"{r['step']} | {r['status']} | {r['global_done']}/{r['global_total']} | {r['message']}"
+                f"{step} | {status} | {done}/{total} | {msg}"
             )
             self.history_box.insert("end", line)
+        if not rows:
+            self.run_metrics_var.set(self.tr("status.metrics.none", "Metryki runu: brak"))
+            return
+        last = rows[0]
+        started = int(last["started_at"] or 0)
+        finished = int(last["finished_at"] or 0) if last["finished_at"] is not None else 0
+        duration_s: Optional[int] = max(0, finished - started) if started and finished else None
+        parsed = self._parse_metrics_blob(str(last["message"] or ""))
+        done = int(last["global_done"] or int(parsed.get("done", 0) or 0))
+        total = int(last["global_total"] or int(parsed.get("total", 0) or 0))
+        cache_hits = int(parsed.get("cache_hits", 0) or 0)
+        tm_hits = int(parsed.get("tm_hits", 0) or 0)
+        reuse_hits = int(parsed.get("reuse_hits", cache_hits + tm_hits) or 0)
+        reuse_rate = float(parsed.get("reuse_rate", 0.0) or 0.0)
+        if total > 0 and reuse_rate <= 0.0 and reuse_hits > 0:
+            reuse_rate = (reuse_hits / total) * 100.0
+        status = self._normalize_stage_status(str(last["status"] or "none"))
+        step = str(last["step"] or "-")
+        self.run_metrics_var.set(
+            f"Ostatni run: {step}/{status} | czas={self._format_duration(duration_s)} | "
+            f"seg={done}/{total} | cache={cache_hits} | tm={tm_hits} | reuse={reuse_rate:.1f}%"
+        )
 
     def _export_project(self) -> None:
         if self.current_project_id is None:
@@ -2305,6 +2454,7 @@ class TranslatorGUI:
         if not s:
             return
         self.last_log_at = time.time()
+        self._collect_runtime_metrics_from_log(s)
 
         m = GLOBAL_PROGRESS_RE.search(s)
         if m:
@@ -2319,6 +2469,7 @@ class TranslatorGUI:
             self.progress_text_var.set(self.tr("status.progress.runtime", "Progress: {done} / {total} ({pct})", done=done, total=total, pct=pct_str))
             self.phase_var.set(self.tr("status.phase.detail", "Phase: {detail}", detail=detail))
             self._set_status(self.tr("status.translation.running", "Translation in progress..."), "running")
+            self._update_live_run_metrics()
             return
 
         if "=== POST" in s and "GLOBAL" in s:
@@ -2339,6 +2490,7 @@ class TranslatorGUI:
             self.phase_var.set(self.tr("status.phase.ollama", "Phase: Ollama requests"))
         elif "=== KONIEC ===" in s:
             self.phase_var.set(self.tr("status.phase.finalizing", "Phase: finalizing"))
+        self._update_live_run_metrics()
 
     def _poll_log_queue(self) -> None:
         try:
@@ -2358,6 +2510,7 @@ class TranslatorGUI:
             quiet_for = int(now - self.last_log_at)
             if quiet_for >= 5:
                 self.phase_var.set(self.tr("status.phase.waiting_response", "Phase: waiting for response ({sec}s without log)", sec=quiet_for))
+        self._update_live_run_metrics()
         self.root.after(1000, self._tick_activity)
 
     def _start_process(self) -> None:
@@ -2379,6 +2532,7 @@ class TranslatorGUI:
         redacted = self._redacted_cmd(cmd)
         self.global_done = 0
         self.global_total = 0
+        self._reset_runtime_metrics()
         self._append_log("\n=== START ===\n")
         self._append_log("Komenda: " + redacted + "\n\n")
         log_event_jsonl(
@@ -2398,6 +2552,7 @@ class TranslatorGUI:
         self.phase_var.set(self.tr("status.phase.starting", "Phase: starting"))
         self.run_started_at = time.time()
         self.last_log_at = self.run_started_at
+        self._update_live_run_metrics()
         self.start_btn.configure(state="disabled")
         self.validate_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
@@ -2434,6 +2589,7 @@ class TranslatorGUI:
                     self.root.after(0, lambda: self._set_status(self.tr("status.done", "Finished"), "ok"))
                     self.root.after(0, lambda: self.phase_var.set(self.tr("status.phase.done", "Phase: finished")))
                     self.root.after(0, lambda: self.progress_value_var.set(100.0 if self.progress_value_var.get() > 0 else self.progress_value_var.get()))
+                    metrics_blob = self._runtime_metrics_blob()
                     if self.current_project_id is not None and run_step == "translate":
                         edit_cfg = self.step_values.get("edit", {})
                         gate_ok, gate_msg = runner_db.qa_gate_status(self.current_project_id, step="translate") if runner_db else (True, "")
@@ -2448,11 +2604,11 @@ class TranslatorGUI:
                     if self.current_run_id is not None:
                         if runner_db:
                             runner_db.finish_run(
-                            self.current_run_id,
-                            status="ok",
-                            message="Run finished",
-                            global_done=self.global_done,
-                            global_total=self.global_total,
+                                self.current_run_id,
+                                status="ok",
+                                message=f"Run finished | {metrics_blob}",
+                                global_done=self.global_done,
+                                global_total=self.global_total,
                             )
                     log_event_jsonl(
                         self.events_log_path,
@@ -2465,14 +2621,15 @@ class TranslatorGUI:
                     self.log_queue.put("\n=== " + self.tr("log.run_error_exit", "RUN ERROR (exit={code})", code=code) + " ===\n")
                     self.root.after(0, lambda: self._set_status(self.tr("status.process_error", "Process error"), "error"))
                     self.root.after(0, lambda: self.phase_var.set(self.tr("status.phase.error", "Phase: error")))
+                    metrics_blob = self._runtime_metrics_blob()
                     if self.current_run_id is not None:
                         if runner_db:
                             runner_db.finish_run(
-                            self.current_run_id,
-                            status="error",
-                            message=f"exit={code}",
-                            global_done=self.global_done,
-                            global_total=self.global_total,
+                                self.current_run_id,
+                                status="error",
+                                message=f"exit={code} | {metrics_blob}",
+                                global_done=self.global_done,
+                                global_total=self.global_total,
                             )
                     log_event_jsonl(
                         self.events_log_path,
@@ -2485,14 +2642,15 @@ class TranslatorGUI:
                 self.log_queue.put(f"\n{self.tr('log.start_error', 'Startup error')}: {e}\n")
                 self.root.after(0, lambda: self._set_status(self.tr("status.start_error", "Startup error"), "error"))
                 self.root.after(0, lambda: self.phase_var.set(self.tr("status.phase.start_error", "Phase: startup error")))
+                metrics_blob = self._runtime_metrics_blob()
                 if self.current_run_id is not None:
                     if runner_db:
                         runner_db.finish_run(
-                        self.current_run_id,
-                        status="error",
-                        message=str(e),
-                        global_done=self.global_done,
-                        global_total=self.global_total,
+                            self.current_run_id,
+                            status="error",
+                            message=f"{e} | {metrics_blob}",
+                            global_done=self.global_done,
+                            global_total=self.global_total,
                         )
                 log_event_jsonl(
                     self.events_log_path,
@@ -2549,6 +2707,8 @@ class TranslatorGUI:
 
         self.run_started_at = time.time()
         self.last_log_at = self.run_started_at
+        self._reset_runtime_metrics()
+        self._update_live_run_metrics()
         self.progress_value_var.set(0.0)
         self.progress_text_var.set(self.tr("status.progress.validation", "Progress: validation"))
         self.phase_var.set(self.tr("status.phase.validation_starting", "Phase: starting validation"))
@@ -2583,9 +2743,10 @@ class TranslatorGUI:
                     self.log_queue.put("\n=== " + self.tr("log.validation_ok", "VALIDATION OK") + " ===\n")
                     self.root.after(0, lambda: self._set_status(self.tr("status.validation.ok", "Validation OK"), "ok"))
                     self.root.after(0, lambda: self.phase_var.set(self.tr("status.phase.validation_done", "Phase: validation complete")))
+                    metrics_blob = self._runtime_metrics_blob()
                     if self.current_run_id is not None:
                         if runner_db:
-                            runner_db.finish_run(self.current_run_id, status="ok", message="Validation OK")
+                            runner_db.finish_run(self.current_run_id, status="ok", message=f"Validation OK | {metrics_blob}")
                     log_event_jsonl(self.events_log_path, "validation_finish", {"project_id": self.current_project_id, "status": "ok"})
                     if runner_db:
                         runner_db.log_audit_event("validation_finish", {"project_id": self.current_project_id, "status": "ok"})
@@ -2593,18 +2754,20 @@ class TranslatorGUI:
                     self.log_queue.put("\n=== " + self.tr("log.validation_fail_exit", "VALIDATION FAILED (exit={code})", code=code) + " ===\n")
                     self.root.after(0, lambda: self._set_status(self.tr("status.validation.error", "Validation error"), "error"))
                     self.root.after(0, lambda: self.phase_var.set(self.tr("status.phase.validation_error_done", "Phase: validation finished with errors")))
+                    metrics_blob = self._runtime_metrics_blob()
                     if self.current_run_id is not None:
                         if runner_db:
-                            runner_db.finish_run(self.current_run_id, status="error", message=f"Validation exit={code}")
+                            runner_db.finish_run(self.current_run_id, status="error", message=f"Validation exit={code} | {metrics_blob}")
                     log_event_jsonl(self.events_log_path, "validation_finish", {"project_id": self.current_project_id, "status": "error", "exit": code})
                     if runner_db:
                         runner_db.log_audit_event("validation_finish", {"project_id": self.current_project_id, "status": "error"})
             except Exception as e:
                 self.log_queue.put(f"\n{self.tr('log.validation_start_error', 'Validation startup error')}: {e}\n")
                 self.root.after(0, lambda: self._set_status(self.tr("status.start_error", "Startup error"), "error"))
+                metrics_blob = self._runtime_metrics_blob()
                 if self.current_run_id is not None:
                     if runner_db:
-                        runner_db.finish_run(self.current_run_id, status="error", message=str(e))
+                        runner_db.finish_run(self.current_run_id, status="error", message=f"{e} | {metrics_blob}")
                 log_event_jsonl(self.events_log_path, "validation_finish", {"project_id": self.current_project_id, "status": "exception", "error": str(e)})
                 if runner_db:
                     runner_db.log_audit_event("validation_finish", {"project_id": self.current_project_id, "status": "exception"})

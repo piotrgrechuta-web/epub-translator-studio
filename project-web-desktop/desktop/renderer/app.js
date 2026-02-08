@@ -16,6 +16,7 @@ const PROFILE_IDS = [
 const verEl = document.getElementById('ver');
 const msgEl = document.getElementById('msg');
 const statusEl = document.getElementById('status');
+const runMetricsEl = document.getElementById('run_metrics');
 const countsEl = document.getElementById('counts');
 const projectSummaryEl = document.getElementById('project_summary');
 const logEl = document.getElementById('log');
@@ -244,6 +245,38 @@ function updateCounts(counts) {
   countsEl.textContent = `idle=${c.idle || 0} | pending=${c.pending || 0} | running=${c.running || 0} | error=${c.error || 0}`;
 }
 
+function normalizeProjectStatus(status) {
+  const s = String(status || 'idle').toLowerCase();
+  const map = {
+    none: 'idle',
+    ready: 'idle',
+    queued: 'pending',
+    queue: 'pending',
+    needs_review: 'error',
+    fail: 'error',
+    failed: 'error',
+    done: 'ok',
+    success: 'ok',
+  };
+  if (['idle', 'pending', 'running', 'error', 'ok'].includes(s)) return s;
+  return map[s] || 'idle';
+}
+
+function normalizeStageStatus(status) {
+  const s = String(status || 'none').toLowerCase();
+  const map = {
+    queued: 'pending',
+    queue: 'pending',
+    in_progress: 'running',
+    done: 'ok',
+    success: 'ok',
+    fail: 'error',
+    failed: 'error',
+  };
+  if (['none', 'idle', 'pending', 'running', 'ok', 'error'].includes(s)) return s;
+  return map[s] || 'none';
+}
+
 function shortText(value, maxLen = 42) {
   const text = String(value || '').trim();
   if (maxLen <= 3 || text.length <= maxLen) return text;
@@ -251,12 +284,7 @@ function shortText(value, maxLen = 42) {
 }
 
 function stageStatusLabel(status) {
-  const s = String(status || 'none').toLowerCase();
-  if (s === 'ok') return 'ok';
-  if (s === 'error') return 'err';
-  if (s === 'running') return 'run';
-  if (s === 'pending') return 'q';
-  return '-';
+  return normalizeStageStatus(status);
 }
 
 function nextActionLabel(action) {
@@ -303,22 +331,70 @@ function setRunAllButtons() {
   stopRunAllBtn.disabled = !runAllActive;
 }
 
+function formatDuration(seconds) {
+  const sec = Number(seconds || 0);
+  if (!sec || sec < 0) return '-';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function runMetricsText(run) {
+  const r = run || {};
+  const m = r.metrics || {};
+  const step = String(r.step || '-');
+  const status = normalizeStageStatus(r.status || 'none');
+  const done = Number(m.done ?? r.global_done ?? 0);
+  const total = Number(m.total ?? r.global_total ?? 0);
+  const cacheHits = Number(m.cache_hits ?? 0);
+  const tmHits = Number(m.tm_hits ?? 0);
+  const reuseRate = Number(m.reuse_rate ?? 0);
+  const duration = formatDuration(m.duration_s ?? m.dur_s);
+  return `Ostatni run: ${step}/${status} | czas=${duration} | seg=${done}/${total} | cache=${cacheHits} | tm=${tmHits} | reuse=${reuseRate.toFixed(1)}%`;
+}
+
+function renderRunMetricsFromRuns(runs) {
+  if (!runMetricsEl) return;
+  const list = Array.isArray(runs) ? runs : [];
+  if (!list.length) {
+    runMetricsEl.textContent = 'Metryki runu: brak';
+    return;
+  }
+  runMetricsEl.textContent = runMetricsText(list[0]);
+}
+
+function renderRunMetricsLive(stats) {
+  if (!runMetricsEl) return;
+  const s = stats || {};
+  const done = Number(s.done || 0);
+  const total = Number(s.total || 0);
+  const cacheHits = Number(s.cache_hits || 0);
+  const tmHits = Number(s.tm_hits || 0);
+  const reuseRate = Number(s.reuse_rate || 0);
+  const duration = formatDuration(s.dur_s);
+  runMetricsEl.textContent = `Metryki runu: czas=${duration} | seg=${done}/${total} | cache=${cacheHits} | tm=${tmHits} | reuse=${reuseRate.toFixed(1)}%`;
+}
+
 function renderHistory(runs) {
   if (!historyEl) return;
   const list = Array.isArray(runs) ? runs : [];
   if (!list.length) {
     historyEl.textContent = 'Brak historii runow dla aktywnego projektu.';
+    renderRunMetricsFromRuns([]);
     return;
   }
   historyEl.textContent = list.map((r) => {
     const started = formatTs(r.started_at);
     const step = r.step || '-';
-    const status = r.status || '-';
-    const done = Number(r.global_done || 0);
-    const total = Number(r.global_total || 0);
+    const status = normalizeStageStatus(r.status || 'none');
+    const done = Number(r.metrics?.done ?? r.global_done ?? 0);
+    const total = Number(r.metrics?.total ?? r.global_total ?? 0);
     const msg = r.message || '';
     return `[${started}] ${step} | ${status} | ${done}/${total} | ${msg}`;
   }).join('\n');
+  renderRunMetricsFromRuns(list);
 }
 
 async function openExternal(url) {
@@ -412,8 +488,9 @@ async function loadProjects(keepSelection = true) {
       o.value = String(p.id);
       const nameShort = shortText(p.name, 34);
       const summary = projectSummaryText(p);
-      o.textContent = `${nameShort} | ${p.status}/${p.active_step} | ${summary}`;
-      o.title = `${p.name} | ${p.status}/${p.active_step} | ${summary}`;
+      const st = normalizeProjectStatus(p.status || 'idle');
+      o.textContent = `${nameShort} | ${st}/${p.active_step} | ${summary}`;
+      o.title = `${p.name} | ${st}/${p.active_step} | ${summary}`;
       projectSelectEl.appendChild(o);
     }
     updateCounts(data.counts || {});
@@ -421,6 +498,7 @@ async function loadProjects(keepSelection = true) {
       currentProjectId = null;
       renderProjectSummary(null);
       renderHistory([]);
+      renderRunMetricsFromRuns([]);
       return;
     }
     let next = null;
@@ -725,9 +803,15 @@ async function pollStatus() {
   try {
     const s = await api('/run/status');
     if (statusEl) statusEl.textContent = `Status: ${s.running ? 'RUNNING' : 'IDLE'} | mode=${s.mode} | exit=${s.exit_code ?? '--'}`;
+    if (s.running && s.run_stats) {
+      renderRunMetricsLive(s.run_stats);
+    }
     if (logEl) {
       logEl.textContent = s.log || '';
       logEl.scrollTop = logEl.scrollHeight;
+    }
+    if (prevRunning && !s.running) {
+      await refreshHistory();
     }
     if (runAllActive && prevRunning && !s.running && !runAllBusy) {
       runAllBusy = true;
