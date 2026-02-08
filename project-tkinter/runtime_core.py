@@ -43,6 +43,7 @@ class RunOptions:
     use_glossary: bool = True
     tm_db: str = ""
     tm_project_id: Optional[int] = None
+    run_step: str = "translate"
 
 
 def list_ollama_models(host: str, timeout_s: int = 20) -> List[str]:
@@ -166,6 +167,7 @@ def build_run_command(
         cmd += ["--tm-db", opts.tm_db.strip()]
     if opts.tm_project_id is not None:
         cmd += ["--tm-project-id", str(int(opts.tm_project_id))]
+    cmd += ["--run-step", (opts.run_step.strip().lower() or "translate")]
     cmd += ["--tm-fuzzy-threshold", tm_fuzzy_threshold]
     return cmd
 

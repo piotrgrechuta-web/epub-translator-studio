@@ -599,6 +599,7 @@ class TranslatorGUI:
         self.tags_var = tk.StringVar(value="p,li,h1,h2,h3,h4,h5,h6,blockquote,dd,dt,figcaption,caption")
         self.use_cache_var = tk.BooleanVar(value=True)
         self.use_glossary_var = tk.BooleanVar(value=True)
+        self.hard_gate_epubcheck_var = tk.BooleanVar(value=True)
         self.checkpoint_var = tk.StringVar(value="0")
         self.tooltip_mode_var = tk.StringVar(value=self.tooltip_mode)
         self.ui_language_var = tk.StringVar(value=self.i18n.lang)
@@ -1233,6 +1234,11 @@ class TranslatorGUI:
             card,
             text=self.tr("ui.hint.shortcuts", "SkrĂłty: Ctrl+S zapisz, Ctrl+R start, Ctrl+Q kolejkuj, F5 modele."),
             style="Helper.TLabel",
+        ).pack(anchor="w", pady=(0, self._theme_space("space_sm", 8)))
+        ttk.Checkbutton(
+            card,
+            text=self.tr("label.hard_gate_epubcheck", "Hard gate EPUBCheck (blokuj finalizacje przy bledzie EPUBCheck)"),
+            variable=self.hard_gate_epubcheck_var,
         ).pack(anchor="w", pady=(0, self._theme_space("space_sm", 8)))
 
         btns = ttk.Frame(card)
@@ -2839,11 +2845,36 @@ class TranslatorGUI:
             use_glossary=bool(self.use_glossary_var.get()),
             tm_db=str(SQLITE_FILE),
             tm_project_id=self.current_project_id,
+            run_step=(self.mode_var.get().strip().lower() or "translate"),
         )
         return core_build_run_command(self._translator_cmd_prefix(), opts, tm_fuzzy_threshold="0.92")
 
     def _build_validation_command(self, epub_path: str) -> List[str]:
         return core_build_validation_command(self._translator_cmd_prefix(), epub_path, self.tags_var.get().strip())
+
+    def _run_epubcheck_gate(self, epub_path: Path) -> Tuple[bool, str]:
+        target = Path(epub_path)
+        if not target.exists():
+            return False, f"[EPUBCHECK-GATE] FAIL: output EPUB missing: {target}"
+        try:
+            proc = subprocess.run(
+                ["epubcheck", str(target)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        except Exception as e:
+            return False, f"[EPUBCHECK-GATE] FAIL: epubcheck unavailable: {e}"
+
+        raw = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+        if proc.returncode == 0:
+            return True, "[EPUBCHECK-GATE] PASS"
+        tail = "\n".join(raw.splitlines()[-40:]).strip()
+        msg = f"[EPUBCHECK-GATE] FAIL: exit={proc.returncode}"
+        if tail:
+            msg += "\n" + tail
+        return False, msg
 
     def _validate(self) -> Optional[str]:
         required = [
@@ -3053,6 +3084,13 @@ class TranslatorGUI:
                     self.log_queue.put(line)
 
                 code = self.proc.wait()
+                if code == 0 and bool(self.hard_gate_epubcheck_var.get()):
+                    self.log_queue.put("[EPUBCHECK-GATE] Running epubcheck...\n")
+                    gate_ok, gate_msg = self._run_epubcheck_gate(Path(self.output_epub_var.get().strip()))
+                    self.log_queue.put(gate_msg + "\n")
+                    if not gate_ok:
+                        self.log_queue.put("\n=== EPUBCHECK GATE BLOCKED ===\n")
+                        code = 86
                 if code == 0:
                     self.log_queue.put("\n=== " + self.tr("log.run_ok", "RUN OK") + " ===\n")
                     self.root.after(0, lambda: self._set_status(self.tr("status.done", "Finished"), "ok"))
@@ -3314,6 +3352,7 @@ class TranslatorGUI:
             "tags": self.tags_var.get(),
             "use_cache": self.use_cache_var.get(),
             "use_glossary": self.use_glossary_var.get(),
+            "hard_gate_epubcheck": self.hard_gate_epubcheck_var.get(),
             "checkpoint": self.checkpoint_var.get(),
             "source_lang": self.source_lang_var.get(),
             "target_lang": self.target_lang_var.get(),
@@ -3349,6 +3388,7 @@ class TranslatorGUI:
         self.tags_var.set(data.get("tags", self.tags_var.get()))
         self.use_cache_var.set(bool(data.get("use_cache", self.use_cache_var.get())))
         self.use_glossary_var.set(bool(data.get("use_glossary", self.use_glossary_var.get())))
+        self.hard_gate_epubcheck_var.set(bool(data.get("hard_gate_epubcheck", self.hard_gate_epubcheck_var.get())))
         self.checkpoint_var.set(data.get("checkpoint", self.checkpoint_var.get()))
         self.tooltip_mode_var.set(str(data.get("tooltip_mode", self.tooltip_mode_var.get() or "hybrid")))
         self.source_lang_var.set(str(data.get("source_lang", self.source_lang_var.get() or "en")))

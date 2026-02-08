@@ -330,6 +330,13 @@ Wazne:
 1. uruchamia tryb walidacji,
 2. zapisuje osobny run `validate` w bazie.
 
+### `Hard gate EPUBCheck`
+- Po co: zablokowanie finalizacji runu, jesli `epubcheck` zwroci bledy struktury EPUB.
+- Jak: w sekcji `Uruchomienie` zaznacz `Hard gate EPUBCheck`.
+- Wplyw:
+1. po udanym runie translacji/redakcji aplikacja automatycznie uruchamia `epubcheck`,
+2. przy bledzie gate run konczy sie statusem `error` (zamiast `ok`).
+
 ### `Estymacja`
 - Po co: szybka prognoza rozmiaru pracy.
 - Wplyw: oblicza liczbe segmentow, cache, token hint; nie modyfikuje plikow.
@@ -474,6 +481,7 @@ Skroty:
 Wplyw:
 - `Save Segment` zmienia tylko dane w pamieci okna,
 - dopiero `Save EPUB` zapisuje plik i robi backup.
+- zapis segmentu zachowuje inline tagi i atrybuty (nie splaszcza struktury XHTML).
 
 ## 6.3 Search/Replace
 

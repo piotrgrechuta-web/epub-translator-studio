@@ -17,6 +17,10 @@ All notable changes to this project are documented in this file.
   - `project-tkinter/tests/test_series_support.py`.
 - New documentation page:
   - `docs/10-Series-Style-Memory.md`.
+- Reliability/quality features:
+  - segment-state ledger in SQLite (`segment_ledger`) with statuses `PENDING/PROCESSING/COMPLETED/ERROR`,
+  - run-step scoping for ledger (`--run-step`),
+  - hard-gate `EPUBCheck` option in Tkinter run panel.
 
 ### Changed
 - `project-tkinter/app_gui_classic.py`:
@@ -35,6 +39,8 @@ All notable changes to this project are documented in this file.
   - `docs/09-Backlog-do-uzgodnienia.md`,
   - `docs/README.md`,
   - `docs/index.md`.
+- `project-tkinter/studio_suite.py`:
+  - segment editor save now preserves inline tags/attributes (non-flattening text update).
 
 ### Fixed
 - Self-healing DB schema integrity for drifted local databases

@@ -21,6 +21,7 @@ from provider_runtime import load_plugins, render_command, plugin_health_check, 
 from qa_assignment import choose_assignee, build_load_map
 from alerts import build_overdue_payload, send_webhook
 from gui_tooltips import install_tooltips
+from text_preserve import set_text_preserving_inline
 
 
 EN_HINTS = {"the", "and", "of", "to", "in", "for", "with", "that", "this", "is", "are"}
@@ -556,9 +557,7 @@ class StudioSuiteWindow:
             return
         i = int(sel[0]); txt = self.tgt_txt.get("1.0", "end").strip()
         el = self._tgt[i]
-        for c in list(el):
-            el.remove(c)
-        el.text = txt
+        set_text_preserving_inline(el, txt)
 
     def _save_epub(self) -> None:
         if self._root is None or self._ch is None:
