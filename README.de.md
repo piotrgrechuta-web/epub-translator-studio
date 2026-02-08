@@ -10,6 +10,8 @@ KEYWORDS: `EPUB Uebersetzer`, `EPUB Uebersetzungswerkzeug`, `KI Uebersetzung`, `
 - EPUB Uebersetzung (`translate`) und Nachbearbeitung (`edit`)
 - EPUB Validierung
 - Translation Memory (TM) und Segment-Cache
+- immer sichtbarer Ledger-Fortschrittsbalken im Run-Bereich (`done/processing/error/pending`)
+- modell-spezifische Prompt-Presets in der GUI (Gemini: `Book Balanced`, `Lovecraft Tone`, `Technical Manual`, `Polish Copyedit`)
 - QA Findings Workflow und QA Gate
 - EPUB Operationen: Front Card, Cover/Bild-Entfernung, Segment-Editor
 - Projektwarteschlange (`pending`, `run all`)

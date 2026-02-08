@@ -274,6 +274,17 @@ Po udanym runie aplikacja moze dopisac propozycje terminow serii na podstawie TM
 - Po co: autoryzacja dla Google.
 - Wplyw: bez klucza run dla Google sie nie uruchomi.
 
+### `Prompt preset` + `Apply preset`
+- Po co: szybki wybor gotowej "receptury" promptu dla aktualnego `provider` i `trybu` (`translate`/`edit`).
+- Jak:
+1. wybierz preset z listy,
+2. kliknij `Apply preset`,
+3. aplikacja zapisze prompt do bezpiecznego pliku presetowego i podstawi go w polu `Prompt`.
+- Wplyw:
+1. nie trzeba recznie przepisywac promptu,
+2. wybor jest filtrowany do kompatybilnych presetow (np. Google/Gemini),
+3. aktywny preset zapisuje sie w stanie UI (SQLite).
+
 ### `Max segs / request`, `Max chars / request`, `Pauza miedzy requestami`
 - Po co: kontrola wielkosci batchy i tempa zapytan.
 - Wplyw: bezposrednio zmienia argumenty procesu tlumacza.
@@ -336,6 +347,15 @@ Wazne:
 - Wplyw:
 1. po udanym runie translacji/redakcji aplikacja automatycznie uruchamia `epubcheck`,
 2. przy bledzie gate run konczy sie statusem `error` (zamiast `ok`).
+
+### `Ledger status` (staly mini-dashboard)
+- Po co: stale widoczny postep segmentow ledgera podczas runu.
+- Jak: w sekcji `Uruchomienie`, pod glownym paskiem postepu, widoczny jest status i kolorowy pasek.
+- Wplyw:
+1. zielony = `COMPLETED`,
+2. zolty = `PROCESSING`,
+3. czerwony = `ERROR`,
+4. szary = `PENDING`.
 
 ### `Estymacja`
 - Po co: szybka prognoza rozmiaru pracy.
@@ -414,7 +434,8 @@ Wazne:
 Zawiera:
 - historie ostatnich uruchomien projektu,
 - log live z procesu,
-- postep globalny i aktualna faze.
+- postep globalny i aktualna faze,
+- podglad statusu ledgera (`done/processing/error/pending`) bez otwierania Studio Tools.
 
 Po co laikowi:
 - to jest pierwsze miejsce do diagnozy, gdy cos "stoi" albo konczy sie bledem.

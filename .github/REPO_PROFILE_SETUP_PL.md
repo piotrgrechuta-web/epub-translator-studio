@@ -10,7 +10,7 @@ Repo:
 Wklej:
 
 ```text
-Desktop toolkit for AI-assisted EPUB translation, editing and QA workflows (Tkinter).
+Desktop EPUB translator toolkit with AI translation, editing, QA, ledger progress dashboard and Gemini prompt presets (Tkinter).
 ```
 
 ## 2) Website (GitHub -> About)

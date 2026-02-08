@@ -10,6 +10,7 @@ import platform
 import queue
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -40,6 +41,7 @@ from epub_enhancer import (
 )
 from studio_suite import StudioSuiteWindow
 from app_events import flush_event_log, log_event_jsonl
+from prompt_presets import filter_prompt_presets, load_prompt_presets, save_default_prompt_presets
 from runtime_core import (
     RunOptions as CoreRunOptions,
     build_run_command as core_build_run_command,
@@ -60,6 +62,7 @@ GOOGLE_API_KEY_ENV = "GOOGLE_API_KEY"
 SUPPORT_URL = "https://github.com/sponsors/Piotr-Grechuta"
 REPO_URL = "https://github.com/Piotr-Grechuta/epub-translator-studio"
 SERIES_DATA_DIR = Path(__file__).resolve().with_name("data").joinpath("series")
+PROMPT_PRESETS_FILE = Path(__file__).resolve().with_name("prompt_presets.json")
 GOOGLE_KEYRING_SERVICE = "epub-translator-studio"
 GOOGLE_KEYRING_USER = "google_api_key"
 GLOBAL_PROGRESS_RE = re.compile(r"GLOBAL\s+(\d+)\s*/\s*(\d+)\s*\(([^)]*)\)\s*\|\s*(.*)")
@@ -210,6 +213,9 @@ class TranslatorGUI:
         self.ui_tokens: Dict[str, Any] = {}
         self._runtime_metrics: Dict[str, int] = {}
         self._runtime_metric_lines: set[str] = set()
+        self.prompt_presets: List[Dict[str, str]] = []
+        self.prompt_preset_by_label: Dict[str, Dict[str, str]] = {}
+        self._ledger_counts: Dict[str, int] = {"PENDING": 0, "PROCESSING": 0, "COMPLETED": 0, "ERROR": 0}
         self._reset_runtime_metrics()
 
         self._configure_main_window()
@@ -222,10 +228,13 @@ class TranslatorGUI:
         self.db.import_legacy_gui_settings(SETTINGS_FILE)
         self._load_defaults()
         self._load_settings(silent=True)
+        self._load_prompt_presets_catalog()
+        self._refresh_prompt_preset_options()
         self._refresh_profiles()
         self._refresh_series()
         self._refresh_projects(select_current=True)
         self._update_command_preview()
+        self._refresh_ledger_status()
         self._poll_log_queue()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -596,6 +605,8 @@ class TranslatorGUI:
         self.input_epub_var = tk.StringVar()
         self.output_epub_var = tk.StringVar()
         self.prompt_var = tk.StringVar()
+        self.prompt_preset_var = tk.StringVar()
+        self.prompt_preset_desc_var = tk.StringVar(value=self.tr("status.prompt_preset.none", "Prompt preset: custom/manual"))
         self.glossary_var = tk.StringVar()
         self.cache_var = tk.StringVar()
         self.debug_dir_var = tk.StringVar(value="debug")
@@ -628,6 +639,7 @@ class TranslatorGUI:
         self.inline_notice_var = tk.StringVar(value="")
         self.progress_text_var = tk.StringVar(value=self.tr("status.progress.zero", "PostĂ„â„˘p: 0 / 0"))
         self.phase_var = tk.StringVar(value=self.tr("status.phase.wait", "Etap: oczekiwanie"))
+        self.ledger_status_var = tk.StringVar(value=self.tr("status.ledger.none", "Ledger: no data"))
         self.run_metrics_var = tk.StringVar(value=self.tr("status.metrics.none", "Metryki runu: brak"))
         self.progress_value_var = tk.DoubleVar(value=0.0)
         self.global_done = 0
@@ -1154,6 +1166,26 @@ class TranslatorGUI:
         self.google_key_entry = ttk.Entry(card, textvariable=self.google_api_key_var, show="*")
         self.google_key_entry.grid(row=3, column=1, sticky="ew", pady=(8, 0))
 
+        ttk.Label(card, text=self.tr("label.prompt_preset", "Prompt preset:")).grid(row=20, column=0, sticky="w", pady=(8, 0))
+        preset_row = ttk.Frame(card)
+        preset_row.grid(row=20, column=1, sticky="ew", pady=(8, 0))
+        self.prompt_preset_combo = ttk.Combobox(preset_row, textvariable=self.prompt_preset_var, state="readonly")
+        self.prompt_preset_combo.pack(side="left", fill="x", expand=True)
+        self.prompt_preset_combo.bind("<<ComboboxSelected>>", lambda _: self._on_prompt_preset_selected())
+        ttk.Button(
+            preset_row,
+            text=self.tr("button.apply_preset", "Apply preset"),
+            command=self._apply_selected_prompt_preset,
+            style="Secondary.TButton",
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            preset_row,
+            text=self.tr("button.reload_presets", "Reload"),
+            command=self._reload_prompt_presets,
+            style="Secondary.TButton",
+        ).pack(side="left", padx=(8, 0))
+        ttk.Label(card, textvariable=self.prompt_preset_desc_var, style="Helper.TLabel").grid(row=21, column=0, columnspan=2, sticky="w", pady=(4, 0))
+
         ttk.Label(card, text=self.tr("label.max_segs", "Max segs / request:")).grid(row=4, column=0, sticky="w", pady=(8, 0))
         ttk.Entry(card, textvariable=self.batch_max_segs_var, width=14).grid(row=4, column=1, sticky="w", pady=(8, 0))
 
@@ -1285,6 +1317,16 @@ class TranslatorGUI:
         ttk.Label(progress_wrap, textvariable=self.progress_text_var, style="Sub.TLabel").pack(anchor="w")
         self.progress_bar = ttk.Progressbar(progress_wrap, mode="determinate", variable=self.progress_value_var, maximum=100.0)
         self.progress_bar.pack(fill="x", pady=(4, 0))
+        ttk.Label(progress_wrap, textvariable=self.ledger_status_var, style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
+        self.ledger_canvas = tk.Canvas(
+            progress_wrap,
+            height=10,
+            highlightthickness=0,
+            bd=0,
+            bg=self._theme_color("surface_bg", "#f8fafc"),
+        )
+        self.ledger_canvas.pack(fill="x", pady=(4, 0))
+        self.ledger_canvas.bind("<Configure>", lambda _: self._draw_ledger_bar())
         ttk.Label(progress_wrap, textvariable=self.phase_var, style="Sub.TLabel").pack(anchor="w", pady=(4, 0))
 
     def _build_enhance_card(self, parent: ttk.Frame) -> None:
@@ -1380,6 +1422,7 @@ class TranslatorGUI:
             self.project_var.set("")
             self.current_project_id = None
             self._refresh_status_panel(rows)
+            self._refresh_ledger_status()
             return
         if select_current and self.current_project_id is not None:
             for n, pid in self.project_name_to_id.items():
@@ -2171,9 +2214,11 @@ class TranslatorGUI:
         }
         self._load_step_values(self.mode_var.get())
         self._on_provider_change()
+        self._refresh_prompt_preset_options()
         self._update_command_preview()
         self._refresh_run_history()
         self._refresh_status_panel()
+        self._refresh_ledger_status()
         self._set_status(self.tr("status.project_loaded", "Project loaded: {name}", name=name), "ready")
 
     def _save_project(self, notify_missing: bool = False) -> None:
@@ -2701,7 +2746,9 @@ class TranslatorGUI:
         if not self.output_epub_var.get().strip() or not self.cache_var.get().strip():
             self._suggest_output_and_cache()
         self.last_mode = new_mode
+        self._refresh_prompt_preset_options()
         self._save_project()
+        self._refresh_ledger_status()
         self._update_command_preview()
 
     def _on_provider_change(self) -> None:
@@ -2712,7 +2759,91 @@ class TranslatorGUI:
         else:
             self.ollama_host_entry.configure(state="disabled")
             self.google_key_entry.configure(state="normal")
+        self._refresh_prompt_preset_options()
         self._update_command_preview()
+
+    def _load_prompt_presets_catalog(self) -> None:
+        try:
+            _ = save_default_prompt_presets(PROMPT_PRESETS_FILE)
+        except Exception:
+            pass
+        self.prompt_presets = load_prompt_presets(PROMPT_PRESETS_FILE)
+
+    def _refresh_prompt_preset_options(self) -> None:
+        if not hasattr(self, "prompt_preset_combo"):
+            return
+        provider = self.provider_var.get().strip().lower() or "any"
+        mode = self.mode_var.get().strip().lower() or "translate"
+        available = filter_prompt_presets(self.prompt_presets, provider=provider, mode=mode)
+        labels = [str(x.get("label") or x.get("id") or "") for x in available]
+        self.prompt_preset_by_label = {}
+        for item in available:
+            label = str(item.get("label") or item.get("id") or "").strip()
+            if label and label not in self.prompt_preset_by_label:
+                self.prompt_preset_by_label[label] = item
+        self.prompt_preset_combo["values"] = labels
+        current = self.prompt_preset_var.get().strip()
+        if current not in self.prompt_preset_by_label:
+            self.prompt_preset_var.set(labels[0] if labels else "")
+        self._on_prompt_preset_selected()
+
+    def _on_prompt_preset_selected(self) -> None:
+        label = self.prompt_preset_var.get().strip()
+        preset = self.prompt_preset_by_label.get(label)
+        if not preset:
+            self.prompt_preset_desc_var.set(self.tr("status.prompt_preset.none", "Prompt preset: custom/manual"))
+            return
+        desc = str(preset.get("description") or "").strip()
+        provider = str(preset.get("provider") or "any").strip().lower()
+        mode = str(preset.get("mode") or "any").strip().lower()
+        suffix = f"[provider={provider}, mode={mode}]"
+        self.prompt_preset_desc_var.set(f"{desc} {suffix}".strip())
+
+    def _reload_prompt_presets(self) -> None:
+        self._load_prompt_presets_catalog()
+        self._refresh_prompt_preset_options()
+        self._set_status(self.tr("status.prompt_presets.reloaded", "Prompt presets reloaded"), "ready")
+
+    def _resolve_prompt_preset_target_path(self, mode: str) -> Path:
+        raw = self.prompt_var.get().strip()
+        allowed_names = {
+            "prompt.txt",
+            "prompt_redakcja.txt",
+            "prompt_translate_preset.txt",
+            "prompt_edit_preset.txt",
+        }
+        if raw:
+            current = Path(raw)
+            if current.name.lower() in allowed_names:
+                return current
+        filename = "prompt_translate_preset.txt" if mode == "translate" else "prompt_edit_preset.txt"
+        return self.workdir / filename
+
+    def _apply_selected_prompt_preset(self) -> None:
+        label = self.prompt_preset_var.get().strip()
+        preset = self.prompt_preset_by_label.get(label)
+        if not preset:
+            self._msg_info(self.tr("info.prompt_preset.none", "No prompt preset selected for current provider/mode."))
+            return
+        mode = self.mode_var.get().strip().lower() or "translate"
+        target_path = self._resolve_prompt_preset_target_path(mode)
+        text = str(preset.get("prompt") or "").strip()
+        if not text:
+            self._msg_error(self.tr("err.prompt_preset.empty", "Selected prompt preset is empty."))
+            return
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_text(text + "\n", encoding="utf-8")
+        except Exception as e:
+            self._msg_error(f"{self.tr('err.prompt_preset.write', 'Failed to write prompt preset file:')}\n{e}")
+            return
+        self.prompt_var.set(str(target_path))
+        self._on_prompt_changed()
+        self._save_project()
+        self._set_status(
+            self.tr("status.prompt_preset.applied", "Prompt preset applied: {name}", name=label),
+            "ready",
+        )
 
     def _suggest_output_and_cache(self) -> None:
         in_path = self.input_epub_var.get().strip()
@@ -3022,6 +3153,97 @@ class TranslatorGUI:
             pass
         self.root.after(80, self._poll_log_queue)
 
+    def _ledger_counts_for_scope(self, project_id: Optional[int], step: str) -> Tuple[bool, Dict[str, int]]:
+        counts = {"PENDING": 0, "PROCESSING": 0, "COMPLETED": 0, "ERROR": 0}
+        if project_id is None:
+            return True, counts
+        con = sqlite3.connect(str(SQLITE_FILE), timeout=1.0)
+        con.row_factory = sqlite3.Row
+        try:
+            exists = con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'segment_ledger'"
+            ).fetchone() is not None
+            if not exists:
+                return False, counts
+            rows = con.execute(
+                """
+                SELECT status, COUNT(*) c
+                FROM segment_ledger
+                WHERE project_id = ? AND run_step = ?
+                GROUP BY status
+                """,
+                (int(project_id), str(step or "translate")),
+            ).fetchall()
+            for row in rows:
+                st = str(row["status"] or "").strip().upper()
+                if st in counts:
+                    counts[st] = int(row["c"] or 0)
+            return True, counts
+        finally:
+            con.close()
+
+    def _draw_ledger_bar(self) -> None:
+        if not hasattr(self, "ledger_canvas"):
+            return
+        canvas = self.ledger_canvas
+        width = max(1, int(canvas.winfo_width() or 1))
+        height = max(1, int(canvas.winfo_height() or int(canvas.cget("height") or 10)))
+        canvas.delete("all")
+        total = max(0, sum(int(v or 0) for v in self._ledger_counts.values()))
+        colors = {
+            "COMPLETED": "#16a34a",
+            "PROCESSING": "#f59e0b",
+            "ERROR": "#dc2626",
+            "PENDING": "#94a3b8",
+        }
+        if total <= 0:
+            canvas.create_rectangle(0, 0, width, height, fill="#cbd5e1", outline="")
+            canvas.create_rectangle(0, 0, width - 1, height - 1, outline="#64748b")
+            return
+        order = ["COMPLETED", "PROCESSING", "ERROR", "PENDING"]
+        x = 0.0
+        for idx, status in enumerate(order):
+            value = max(0, int(self._ledger_counts.get(status, 0)))
+            if value <= 0:
+                continue
+            if idx == len(order) - 1:
+                x2 = float(width)
+            else:
+                x2 = min(float(width), x + (float(width) * float(value) / float(total)))
+            if x2 > x:
+                canvas.create_rectangle(int(x), 0, int(round(x2)), height, fill=colors[status], outline="")
+            x = x2
+        canvas.create_rectangle(0, 0, width - 1, height - 1, outline="#64748b")
+
+    def _refresh_ledger_status(self) -> None:
+        step = self.mode_var.get().strip().lower() or "translate"
+        project_id = self.current_project_id
+        try:
+            available, counts = self._ledger_counts_for_scope(project_id, step)
+        except Exception:
+            available, counts = True, {"PENDING": 0, "PROCESSING": 0, "COMPLETED": 0, "ERROR": 0}
+        self._ledger_counts = counts
+        total = sum(counts.values())
+        if project_id is None:
+            self.ledger_status_var.set(self.tr("status.ledger.no_project", "Ledger: select project"))
+        elif not available:
+            self.ledger_status_var.set(self.tr("status.ledger.unavailable", "Ledger: unavailable (run translation once)"))
+        elif total <= 0:
+            self.ledger_status_var.set(self.tr("status.ledger.empty", "Ledger: no segments yet"))
+        else:
+            self.ledger_status_var.set(
+                self.tr(
+                    "status.ledger.summary",
+                    "Ledger: done={done} processing={processing} error={error} pending={pending} total={total}",
+                    done=counts["COMPLETED"],
+                    processing=counts["PROCESSING"],
+                    error=counts["ERROR"],
+                    pending=counts["PENDING"],
+                    total=total,
+                )
+            )
+        self._draw_ledger_bar()
+
     def _tick_activity(self) -> None:
         if self.proc is None:
             return
@@ -3030,6 +3252,7 @@ class TranslatorGUI:
             quiet_for = int(now - self.last_log_at)
             if quiet_for >= 5:
                 self.phase_var.set(self.tr("status.phase.waiting_response", "Phase: waiting for response ({sec}s without log)", sec=quiet_for))
+        self._refresh_ledger_status()
         self._update_live_run_metrics()
         self.root.after(1000, self._tick_activity)
 
@@ -3070,6 +3293,7 @@ class TranslatorGUI:
         self.progress_value_var.set(0.0)
         self.progress_text_var.set(self.tr("status.progress.zero", "Progress: 0 / 0"))
         self.phase_var.set(self.tr("status.phase.starting", "Phase: starting"))
+        self._refresh_ledger_status()
         self.run_started_at = time.time()
         self.last_log_at = self.run_started_at
         self._update_live_run_metrics()
@@ -3215,6 +3439,7 @@ class TranslatorGUI:
                 self.last_log_at = None
                 self.root.after(0, self._refresh_projects)
                 self.root.after(0, self._refresh_run_history)
+                self.root.after(0, self._refresh_ledger_status)
                 self.root.after(0, lambda: self.start_btn.configure(state="normal"))
                 self.root.after(0, lambda: self.validate_btn.configure(state="normal"))
                 self.root.after(0, lambda: self.stop_btn.configure(state="disabled"))
@@ -3259,6 +3484,7 @@ class TranslatorGUI:
         self.progress_value_var.set(0.0)
         self.progress_text_var.set(self.tr("status.progress.validation", "Progress: validation"))
         self.phase_var.set(self.tr("status.phase.validation_starting", "Phase: starting validation"))
+        self._refresh_ledger_status()
         self.start_btn.configure(state="disabled")
         self.validate_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
@@ -3327,6 +3553,7 @@ class TranslatorGUI:
                 self.last_log_at = None
                 self.root.after(0, self._refresh_projects)
                 self.root.after(0, self._refresh_run_history)
+                self.root.after(0, self._refresh_ledger_status)
                 self.root.after(0, lambda: self.start_btn.configure(state="normal"))
                 self.root.after(0, lambda: self.validate_btn.configure(state="normal"))
                 self.root.after(0, lambda: self.stop_btn.configure(state="disabled"))
@@ -3370,6 +3597,7 @@ class TranslatorGUI:
             "input_epub": self.input_epub_var.get(),
             "output_epub": self.output_epub_var.get(),
             "prompt": self.prompt_var.get(),
+            "prompt_preset": self.prompt_preset_var.get(),
             "glossary": self.glossary_var.get(),
             "cache": self.cache_var.get(),
             "debug_dir": self.debug_dir_var.get(),
@@ -3406,6 +3634,7 @@ class TranslatorGUI:
         self.input_epub_var.set(data.get("input_epub", self.input_epub_var.get()))
         self.output_epub_var.set(data.get("output_epub", self.output_epub_var.get()))
         self.prompt_var.set(data.get("prompt", self.prompt_var.get()))
+        self.prompt_preset_var.set(str(data.get("prompt_preset", self.prompt_preset_var.get() or "")))
         self.glossary_var.set(data.get("glossary", self.glossary_var.get()))
         self.cache_var.set(data.get("cache", self.cache_var.get()))
         self.debug_dir_var.set(data.get("debug_dir", self.debug_dir_var.get()))
@@ -3433,6 +3662,8 @@ class TranslatorGUI:
         if self.ui_language_var.get().strip().lower() != self.i18n.lang:
             self._on_ui_language_change()
         self._on_provider_change()
+        self._refresh_prompt_preset_options()
+        self._refresh_ledger_status()
         self._update_command_preview()
 
     def _save_settings(self, silent: bool = False) -> None:
@@ -3794,4 +4025,3 @@ class TextEditorWindow:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

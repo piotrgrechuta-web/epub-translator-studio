@@ -10,6 +10,8 @@ KEYWORDS: `traductor EPUB`, `herramienta de traduccion EPUB`, `traduccion con IA
 - Traduccion EPUB (`translate`) y post-edicion (`edit`)
 - Validacion EPUB
 - Translation Memory (TM) y cache de segmentos
+- barra de progreso del ledger siempre visible en la seccion Run (`done/processing/error/pending`)
+- presets de prompt por modelo en la GUI (Gemini: `Book Balanced`, `Lovecraft Tone`, `Technical Manual`, `Polish Copyedit`)
 - Flujo de QA findings y QA gate
 - Operaciones EPUB: front card, quitar portada/imagenes, editor de segmentos
 - Cola de proyectos (`pending`, `run all`)

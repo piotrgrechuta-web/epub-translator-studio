@@ -9,6 +9,8 @@ Keywords: `EPUB`, `translator`, `AI`, `Ollama`, `Google Gemini`, `QA`, `TM`, `Tk
 - walidacja EPUB,
 - Translation Memory (SQLite),
 - segment ledger w SQLite (`PENDING/PROCESSING/COMPLETED/ERROR`) dla idempotentnego resume,
+- staly mini-dashboard ledgera w sekcji `Uruchomienie` (`done/processing/error/pending`),
+- presety promptow w GUI pod provider/mode (`Book Balanced`, `Lovecraft Tone`, `Technical Manual`, `Polish Copyedit`),
 - QA findings, workflow statusow i QA gate,
 - opcjonalny hard gate `EPUBCheck` po runie (blokada finalizacji przy bledzie struktury),
 - kolejka projektow (`pending`, `run all`),
@@ -63,8 +65,13 @@ export GOOGLE_API_KEY="<TWOJ_KLUCZ>"
 - `studio_suite.py` - Studio Tools,
 - `project_db.py` - baza projektu, runy, QA, TM,
 - `series_store.py` - baza serii, terminy i eksport/scalanie glosariusza serii,
-- `runtime_core.py` - wspolna logika runtime (uzywana tez przez web backend),
+- `runtime_core.py` - wspolna logika runtime dla wariantow Tkinter (`classic`/`horizon`),
 - `translation_engine.py` - silnik tlumaczenia.
+
+## Presety promptow
+- katalog presetow: `prompt_presets.json`
+- logika filtrowania/provider-mode: `prompt_presets.py`
+- testy presetow: `tests/test_prompt_presets.py`
 
 ## Dane lokalne serii
 - `project-tkinter/data/series/<series-slug>/series.db` - lokalna baza terminow i decyzji serii.

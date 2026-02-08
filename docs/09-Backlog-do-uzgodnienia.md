@@ -4,7 +4,7 @@ Status:
 - `M1 wdrozone` w kodzie i dokumentacji (2026-02-08),
 - `M2 wdrozone` w kodzie i CI (2026-02-08),
 - `M3 w toku`: Issue 8 i 9 `zrealizowane`, Issue 7 `do domkniecia` (inicjalizacja Wiki backend),
-- `M4 w realizacji`: memory-first translation (cache + decision memory + adaptive prompting),
+- `M4 w realizacji`: memory-first translation (cache + decision memory + adaptive prompting), z wdrozonym mini-dashboardem ledgera i presetami promptow Gemini,
 - `M5 plan zatwierdzony`: EPUB-aware segmentacja i integralnosc markup (`&shy;`, inline tags),
 - `M6 plan zatwierdzony`: diff-aware retranslation + semantic diff gate do recenzji,
 - `M7 w realizacji`: wdrozony szkielet serii (project->series, baza serii, manager terminow, merge glosariusza).
@@ -136,6 +136,19 @@ Status:
 - `do domkniecia`:
 1. dopiac eksport metryk ledgera do widoku release notes (obecnie dashboard + runtime),
 2. rozszerzyc telemetry o histogram retry/timeouts per provider.
+3. dodac alerty progowe (np. ERROR > N) bezposrednio przy pasku ledgera.
+
+### Issue #34: Model-specific prompt presets (GUI)
+- Zakres:
+  - katalog presetow promptow z filtrowaniem po `provider` i `mode`,
+  - szybkie zastosowanie presetu z GUI (`Apply preset`) bez recznego przepisywania promptu,
+  - testy jednostkowe logiki ladowania i filtrowania presetow.
+- Done:
+  - presety Gemini widoczne w sekcji `Silnik i parametry batch`,
+  - zapis aktywnego presetu i promptu jest trwaly (UI state SQLite),
+  - testy presetow przechodza lokalnie i w CI.
+
+Status: `zrealizowane`.
 
 ### Issue #27: Human-in-the-loop decision memory + adaptive few-shot
 - Zakres:

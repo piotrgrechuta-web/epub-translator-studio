@@ -17,6 +17,7 @@ Kluczowe obszary:
 - `translation_engine.py` - mechanika tlumaczenia,
 - `project_db.py` - baza i metadane projektowe,
 - `series_store.py` - per-seria magazyn terminow/decyzji i generowanie slownikow serii.
+- `prompt_presets.py` + `prompt_presets.json` - katalog i logika presetow promptow pod provider/mode.
 
 ## 4.3. Przeplyw danych
 
@@ -37,6 +38,7 @@ Nowy przeplyw serii:
 ## 4.4. Warstwy odpowiedzialnosci
 
 - UI: input, konfiguracja, status.
+- UI (run panel): global progress + stale widoczny status ledgera (`done/processing/error/pending`).
 - Runtime: walidacja opcji i budowanie komend.
 - Engine: wykonanie translacji.
 - QA: kontrole jakosci i bramki.

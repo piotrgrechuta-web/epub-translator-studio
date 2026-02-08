@@ -39,3 +39,4 @@ Uklad jest przygotowany tak, aby mozna go:
 - Required checks: `python-checks`, `validate-pr-body`
 - PR template: wymusza wypelnione sekcje i checkliste
 - Dokumentacja online (GitHub Pages): `https://piotr-grechuta.github.io/epub-translator-studio/`
+- Ostatnie aktualizacje UI: staly pasek statusu ledgera + presety promptow Gemini w GUI.

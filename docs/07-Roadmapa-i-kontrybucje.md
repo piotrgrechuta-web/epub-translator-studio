@@ -6,7 +6,7 @@
 - `M2`: zrealizowane.
 - `M3`: w toku (pakiet Wiki gotowy, backend Wiki czeka na inicjalizacje `Home` w UI GitHub).
 - `M7`: uruchomiony szkielet techniczny (seria + slownik serii + auto-detekcja + merge glosariusza).
-- `M4`: w realizacji (ledger orchestration upfront + twardy gate EPUBCheck + tokenized inline editor + dashboard ledger metrics).
+- `M4`: w realizacji (ledger orchestration upfront + twardy gate EPUBCheck + tokenized inline editor + dashboard ledger metrics + stale widoczny pasek ledgera + presety promptow Gemini w GUI).
 - `M5-M6`: plan zatwierdzony, kolejne incrementy po domknieciu M3/M4.
 
 ## 7.1. Priorytety techniczne
@@ -22,6 +22,11 @@
 2. Adaptacyjne podpowiedzi stylu/terminow z decyzji redaktora.
 3. Recenzja tylko zmian o realnej roznicy semantycznej.
 4. Spojnosc stylu miedzy tomami jednej serii (batch/library) - fundament techniczny juz dodany.
+
+Aktualny increment M4 (wdrozony):
+1. mini-dashboard ledgera (`done/processing/error/pending`) widoczny stale w sekcji `Uruchomienie`,
+2. presety promptow pod provider/mode z gotowymi recepturami Gemini,
+3. testy jednostkowe logiki presetow.
 
 ## 7.3. Jak zglaszac zmiany
 

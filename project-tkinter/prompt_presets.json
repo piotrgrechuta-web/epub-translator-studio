@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "presets": [
+    {
+      "id": "gemini_book_balanced",
+      "provider": "google",
+      "mode": "translate",
+      "label": "Gemini: Book Balanced",
+      "description": "Balanced literary translation for general fiction and nonfiction.",
+      "prompt": "You are a professional book translator. Translate from source language to target language faithfully and naturally. Preserve EPUB inline tags and entities exactly. Keep paragraph boundaries and punctuation style. Avoid adding explanations, notes, or summaries. Return only translated content."
+    },
+    {
+      "id": "gemini_lovecraft_tone",
+      "provider": "google",
+      "mode": "translate",
+      "label": "Gemini: Lovecraft Tone",
+      "description": "Atmospheric translation for gothic or cosmic-horror prose.",
+      "prompt": "You are a literary translator focused on gothic and cosmic-horror style. Translate with formal, atmospheric cadence and controlled archaic flavor. Preserve meaning, chronology, and speaker identity. Keep EPUB inline tags and entities unchanged. Do not output comments or analysis."
+    },
+    {
+      "id": "gemini_technical_manual",
+      "provider": "google",
+      "mode": "translate",
+      "label": "Gemini: Technical Manual",
+      "description": "Terminology-first translation for documentation and manuals.",
+      "prompt": "You are a technical translator. Prioritize precision, consistency, and unambiguous terminology. Keep units, commands, identifiers, and markup unchanged where required. Prefer concise, neutral phrasing. Preserve EPUB inline tags and entities exactly. Return only translated text."
+    },
+    {
+      "id": "gemini_polish_copyedit",
+      "provider": "google",
+      "mode": "edit",
+      "label": "Gemini: Polish Copyedit",
+      "description": "Polish copyedit preset for rhythm, clarity, and punctuation consistency.",
+      "prompt": "You are a Polish copy editor. Improve fluency, punctuation, and readability while preserving meaning, facts, and style intent. Keep EPUB inline tags and entities unchanged. Do not rewrite the structure beyond what is needed for quality editing. Return only edited content."
+    }
+  ]
+}

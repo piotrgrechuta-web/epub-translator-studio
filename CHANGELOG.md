@@ -33,6 +33,11 @@ All notable changes to this project are documented in this file.
   - hard-gate `EPUBCheck` option in Tkinter run panel.
   - ledger pre-seeding (all project segments are initialized upfront as `PENDING`),
   - scope pruning for ledger rows no longer present in current EPUB source.
+- Tkinter UX additions:
+  - always-visible ledger status strip in `Uruchomienie` section (`done/processing/error/pending` + color bar),
+  - model-specific prompt presets in GUI with one-click apply (`Gemini` presets),
+  - new prompt preset catalog files: `project-tkinter/prompt_presets.py`, `project-tkinter/prompt_presets.json`,
+  - unit tests for preset loading/filtering: `project-tkinter/tests/test_prompt_presets.py`.
 
 ### Changed
 - Naming cleanup (repo alignment):
@@ -66,6 +71,14 @@ All notable changes to this project are documented in this file.
 - `project-tkinter/studio_suite.py`:
   - dashboard now shows `segment_ledger` status breakdown (`PENDING/PROCESSING/COMPLETED/ERROR`) for active project/step,
   - dashboard reports latest-run provider split and estimated API token usage from ledger (`source_len` + translated length).
+- Documentation synchronized for new UI/runtime features:
+  - `README*.md`, `project-tkinter/README.md`,
+  - `project-tkinter/MANUAL_PL.md`,
+  - `docs/04-Architektura-i-struktura.md`,
+  - `docs/07-Roadmapa-i-kontrybucje.md`,
+  - `docs/08-Status-UI-i-Wiki.md`,
+  - `docs/09-Backlog-do-uzgodnienia.md`,
+  - `docs/wiki/Home.md`, `docs/wiki/Workflow-and-Recovery.md`, `docs/wiki/_Sidebar.md`.
 
 ### Fixed
 - Self-healing DB schema integrity for drifted local databases

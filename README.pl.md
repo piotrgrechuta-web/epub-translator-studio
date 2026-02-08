@@ -11,6 +11,8 @@ KEYWORDS: `tlumacz EPUB`, `narzedzie do tlumaczenia EPUB`, `tlumaczenie AI`, `tl
 - tlumaczenie EPUB (`translate`) i redakcja (`edit`)
 - walidacja EPUB
 - Translation Memory (TM) i cache segmentow
+- staly mini-dashboard ledgera w sekcji `Uruchomienie` (`done/processing/error/pending`)
+- presety promptow w GUI pod provider/model (Gemini: `Book Balanced`, `Lovecraft Tone`, `Technical Manual`, `Polish Copyedit`)
 - workflow findings QA i QA gate
 - operacje EPUB: wizytowka, usuwanie okladki/grafik, edytor segmentow
 - praca kolejka projektow (`pending`, `run all`)
@@ -20,7 +22,7 @@ KEYWORDS: `tlumacz EPUB`, `narzedzie do tlumaczenia EPUB`, `tlumaczenie AI`, `tl
   - glowna aplikacja desktop w Python + Tkinter
   - najpelniejszy zestaw funkcji
 - `legacy/`
-  - zarchiwizowane skrypty z dawnego ukladu (`legacy/start.py`, `legacy/tlumacz_ollama.py`)
+  - zarchiwizowane skrypty z dawnego ukladu (`legacy/launcher_classic.py`, `legacy/translation_engine.py`)
   - nie jest to zalecana sciezka uruchamiania
 
 ## Szybki start
@@ -31,9 +33,9 @@ cd project-tkinter
 python app_main.py --variant classic
 ```
 
-Aliasy kompatybilnosci nadal dzialaja:
-- `python start.py`
-- `python start_horizon.py`
+Dostepne launchery:
+- `python launcher_classic.py`
+- `python launcher_horizon.py`
 
 ## Pierwsze uruchomienie
 - Potrzebujesz jednej z drog:
@@ -77,8 +79,9 @@ export GOOGLE_API_KEY="<TWOJ_KLUCZ>"
 
 ## Architektura (Tkinter core)
 - wspolna logika runtime jest w `project-tkinter/runtime_core.py`
-- kanoniczny translator: `project-tkinter/tlumacz_ollama.py`
+- kanoniczny translator: `project-tkinter/translation_engine.py`
 - oba warianty UI (`classic`, `horizon`) korzystaja z tej samej logiki runtime
+- katalog presetow promptow: `project-tkinter/prompt_presets.json`
 
 ## Dokumentacja
 - manual uzytkownika Tkinter (PL): `project-tkinter/MANUAL_PL.md`

@@ -15,6 +15,8 @@ KEYWORDS: `EPUB translator`, `EPUB translator desktop app`, `EPUB translation to
 - EPUB translation (`translate`) and post-editing (`edit`)
 - EPUB validation
 - Translation Memory (TM) and segment cache
+- always-visible ledger progress strip in Run panel (`done/processing/error/pending`)
+- model-specific prompt presets in GUI (Gemini: `Book Balanced`, `Lovecraft Tone`, `Technical Manual`, `Polish Copyedit`)
 - QA findings workflow and QA gate
 - EPUB operations: front card, cover/image removal, segment editor
 - project queue workflow (`pending`, `run all`)
@@ -83,6 +85,7 @@ export GOOGLE_API_KEY="<YOUR_KEY>"
 - shared runtime logic lives in `project-tkinter/runtime_core.py`
 - canonical translator: `project-tkinter/translation_engine.py`
 - both UI variants (`classic`, `horizon`) run on the same core/runtime contracts
+- prompt preset catalog: `project-tkinter/prompt_presets.json`
 
 ## Documentation
 - Tkinter user manual (PL): `project-tkinter/MANUAL_PL.md`

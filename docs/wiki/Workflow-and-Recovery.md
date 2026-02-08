@@ -16,6 +16,13 @@ This page summarizes the safe workflow for daily work and recovery after interru
 - Segment progress is stored in SQLite (`segment_ledger`).
 - Cache and ledger reuse avoid repeating paid API work.
 - Interrupted runs can be restarted without losing completed segments.
+- Run panel shows a live ledger strip (`done/processing/error/pending`) during processing.
+
+## Prompt Presets (Gemini)
+
+- GUI includes model/provider-specific prompt presets.
+- Presets can be applied with one click (`Apply preset`) and are stored in UI state.
+- Built-ins include: `Book Balanced`, `Lovecraft Tone`, `Technical Manual`, `Polish Copyedit`.
 
 ## If Run Fails
 

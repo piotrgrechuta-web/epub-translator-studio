@@ -21,7 +21,10 @@ Najwazniejsze elementy:
 Dodatkowo:
 - panel `Ostatnie akcje (timeline projektu)` pokazuje ostatnie uruchomienia aktywnego projektu,
 - linia `Metryki runu` pokazuje czas, segmenty, cache/TM i reuse-rate dla ostatniego runu,
-- sekcja `Uruchomienie` pokazuje biezacy status procesu i postep.
+- sekcja `Uruchomienie` pokazuje biezacy status procesu i postep,
+- w sekcji `Uruchomienie` jest stale widoczny mini-dashboard ledgera:
+  - tekst: `Ledger: done=... processing=... error=... pending=... total=...`,
+  - kolorowy pasek statusu (`zielony=COMPLETED`, `zolty=PROCESSING`, `czerwony=ERROR`, `szary=PENDING`).
 
 ## Poprawki UX wdrozone w aplikacji
 
@@ -39,6 +42,10 @@ Wariant Tkinter (`app_gui_classic.py`, `app_gui_horizon.py`, `studio_suite.py`):
   - `Ctrl+R` start runu,
   - `Ctrl+Q` kolejkowanie projektu,
   - `F5` odswiezenie modeli.
+- dodano presety promptow pod provider/mode bez recznego przepisywania:
+  - sekcja `Silnik i parametry batch` -> `Prompt preset`,
+  - gotowe receptury dla Gemini (np. `Book Balanced`, `Lovecraft Tone`, `Technical Manual`, `Polish Copyedit`),
+  - przycisk `Apply preset` zapisuje i podpina prompt do aktywnego kroku projektu.
 
 ## Gdzie jest Wiki / Pages
 
