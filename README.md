@@ -7,9 +7,9 @@
 
 Language: **English** | [Polski](README.pl.md) | [Deutsch](README.de.md) | [Espanol](README.es.md) | [Francais](README.fr.md) | [Portugues](README.pt.md)
 
-Desktop toolkit for translating and editing EPUB files with AI.
+EPUB translator desktop app for AI-powered translation, post-editing, and QA of EPUB files.
 
-KEYWORDS: `EPUB translator`, `EPUB translation tool`, `AI translation`, `ebook translator`, `Ollama translator`, `Google Gemini translation`, `Translation Memory`, `QA gate`, `Tkinter`, `Python`.
+KEYWORDS: `EPUB translator`, `EPUB translator desktop app`, `EPUB translation tool`, `AI translation`, `ebook translator`, `Ollama translator`, `Google Gemini translation`, `Translation Memory`, `QA gate`, `Tkinter`, `Python`.
 
 ## What it does
 - EPUB translation (`translate`) and post-editing (`edit`)
