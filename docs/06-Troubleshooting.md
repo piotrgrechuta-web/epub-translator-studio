@@ -86,4 +86,4 @@ git ls-remote https://github.com/<owner>/<repo>.wiki.git
 
 Fallback:
 - jezeli backend Wiki nadal nie odpowiada, trzymaj dokumentacje w `docs/` i publikuj przez GitHub Pages:
-  - `https://piotrgrechuta-web.github.io/epub-translator-studio/`
+  - `https://piotr-grechuta.github.io/epub-translator-studio/`

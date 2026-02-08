@@ -84,11 +84,11 @@ export GOOGLE_API_KEY="<TWOJ_KLUCZ>"
 - manual uzytkownika Tkinter (PL): `project-tkinter/MANUAL_PL.md`
 - workflow Git na wielu komputerach: `project-tkinter/GIT_WORKFLOW_PL.md`
 - informacje o wsparciu: `SUPPORT_PL.md`
-- portal dokumentacji online: `https://piotrgrechuta-web.github.io/epub-translator-studio/`
+- portal dokumentacji online: `https://piotr-grechuta.github.io/epub-translator-studio/`
 - gdzie widac postep/UI/Wiki: `docs/08-Status-UI-i-Wiki.md`
 
 ## Wsparcie
-- Sponsor: https://github.com/sponsors/piotrgrechuta-web
+- Sponsor: https://github.com/sponsors/Piotr-Grechuta
 - link wsparcia jest tez bezposrednio w UI aplikacji Tkinter (`Wesprzyj projekt`)
 - gotowy szablon PL do uzupelnienia GitHub Sponsors: `.github/SPONSORS_PROFILE_TEMPLATE_PL.md`
 - gotowy pakiet PL do promocji (posty/CTA do release): `.github/SPONSORS_OUTREACH_PACK_PL.md`

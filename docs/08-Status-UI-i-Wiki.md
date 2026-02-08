@@ -43,7 +43,7 @@ Wariant Tkinter (`app_gui_classic.py`, `app_gui_horizon.py`, `studio_suite.py`):
 ## Gdzie jest Wiki / Pages
 
 Aktualny punkt wejscia dokumentacji:
-- GitHub Pages: `https://piotrgrechuta-web.github.io/epub-translator-studio/`
+- GitHub Pages: `https://piotr-grechuta.github.io/epub-translator-studio/`
 - Repo docs: `docs/`
 
 Wiki GitHub (`/wiki`) moze wymagac inicjalizacji backendu.

@@ -3,7 +3,7 @@
 Gotowe tresci do szybkiej promocji wsparcia projektu po aktywacji GitHub Sponsors.
 
 Link sponsors:
-- https://github.com/sponsors/piotrgrechuta-web
+- https://github.com/sponsors/Piotr-Grechuta
 
 ## 1) Krotki opis projektu (1 zdanie)
 
@@ -15,12 +15,12 @@ EPUB Translator Studio to zestaw narzedzi desktop (Tkinter) do tlumaczenia, reda
 
 Wariant A:
 ```text
-Jesli projekt oszczedza Ci czas, wesprzyj dalszy rozwoj: https://github.com/sponsors/piotrgrechuta-web
+Jesli projekt oszczedza Ci czas, wesprzyj dalszy rozwoj: https://github.com/sponsors/Piotr-Grechuta
 ```
 
 Wariant B:
 ```text
-Rozwoj funkcji i poprawki bledow finansowane sa dobrowolnym wsparciem: https://github.com/sponsors/piotrgrechuta-web
+Rozwoj funkcji i poprawki bledow finansowane sa dobrowolnym wsparciem: https://github.com/sponsors/Piotr-Grechuta
 ```
 
 ## 3) Gotowy post (LinkedIn / Facebook)
@@ -29,7 +29,7 @@ Rozwoj funkcji i poprawki bledow finansowane sa dobrowolnym wsparciem: https://g
 Nowa aktualizacja EPUB Translator Studio jest juz dostepna.
 Projekt rozwijam regularnie: tlumaczenie, redakcja i QA EPUB w workflow desktop.
 Jesli to narzedzie pomaga Ci w pracy, mozesz wesprzec rozwoj tutaj:
-https://github.com/sponsors/piotrgrechuta-web
+https://github.com/sponsors/Piotr-Grechuta
 Kazde wsparcie przyspiesza kolejne poprawki i funkcje. Dziekuje!
 ```
 
@@ -38,7 +38,7 @@ Kazde wsparcie przyspiesza kolejne poprawki i funkcje. Dziekuje!
 ```text
 Nowa aktualizacja EPUB Translator Studio.
 AI + EPUB + workflow desktop.
-Wsparcie projektu: https://github.com/sponsors/piotrgrechuta-web
+Wsparcie projektu: https://github.com/sponsors/Piotr-Grechuta
 ```
 
 ## 5) Notka do opisu wydania (GitHub Release)
@@ -46,14 +46,14 @@ Wsparcie projektu: https://github.com/sponsors/piotrgrechuta-web
 ```text
 ### Support
 Jesli ta aktualizacja jest dla Ciebie wartosciowa, wesprzyj projekt:
-https://github.com/sponsors/piotrgrechuta-web
+https://github.com/sponsors/Piotr-Grechuta
 ```
 
 ## 6) Krotka odpowiedz dla uzytkownika "jak pomoc?"
 
 ```text
 Najlatwiej: zglos issue z konkretnym przypadkiem lub wesprzyj projekt przez GitHub Sponsors:
-https://github.com/sponsors/piotrgrechuta-web
+https://github.com/sponsors/Piotr-Grechuta
 ```
 
 ## 7) Mini-plan publikacji (powtarzalny)

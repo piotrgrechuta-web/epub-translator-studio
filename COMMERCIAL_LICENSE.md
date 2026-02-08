@@ -27,8 +27,8 @@ Send a licensing request with:
 5. preferred timeline.
 
 Contact:
-- GitHub profile: https://github.com/piotrgrechuta-web
-- GitHub Sponsors page: https://github.com/sponsors/piotrgrechuta-web
+- GitHub profile: https://github.com/Piotr-Grechuta
+- GitHub Sponsors page: https://github.com/sponsors/Piotr-Grechuta
 
 ## Typical Commercial Terms (Negotiated)
 

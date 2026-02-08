@@ -19,7 +19,7 @@ Opis:
 
 ## Support
 Jesli projekt oszczedza Ci czas, wesprzyj dalszy rozwoj:
-https://github.com/sponsors/piotrgrechuta-web
+https://github.com/sponsors/Piotr-Grechuta
 ```
 
 ## Krotki post po publikacji release (copy-paste)
@@ -28,5 +28,5 @@ https://github.com/sponsors/piotrgrechuta-web
 Opublikowalem aktualizacje EPUB Translator Studio.
 Dodalem gotowe szablony zgloszen, porzadek wsparcia i materialy sponsors.
 Jesli narzedzie pomaga Ci w pracy, wesprzyj projekt:
-https://github.com/sponsors/piotrgrechuta-web
+https://github.com/sponsors/Piotr-Grechuta
 ```

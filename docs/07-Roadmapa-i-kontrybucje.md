@@ -45,7 +45,7 @@ Dla kazdego release:
 ## 7.6. Sponsoring i utrzymanie
 
 Jesli projekt oszczedza czas:
-- wesprzyj: `https://github.com/sponsors/piotrgrechuta-web`
+- wesprzyj: `https://github.com/sponsors/Piotr-Grechuta`
 - zglaszaj regresje i pomysly,
 - pomoz dopracowac dokumentacje i testy.
 

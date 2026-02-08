@@ -1,4 +1,4 @@
-﻿# EPUB Translator Studio (Tkinter) - Manual praktyczny dla poczatkujacego
+# EPUB Translator Studio (Tkinter) - Manual praktyczny dla poczatkujacego
 
 Ten dokument tlumaczy program w stylu:
 - co dana opcja robi,
@@ -675,7 +675,7 @@ W aplikacji sa szybkie przyciski:
 2. `Repo online`
 
 Link sponsora:
-- `https://github.com/sponsors/piotrgrechuta-web`
+- `https://github.com/sponsors/Piotr-Grechuta`
 
 Po aktywacji konta sponsors:
 1. Uzupelnij tresci profilu wg `.github/SPONSORS_PROFILE_TEMPLATE_PL.md`.

@@ -4,7 +4,7 @@ Jesli projekt pomaga Ci w pracy z EPUB, mozesz wesprzec dalszy rozwoj dobrowolna
 
 ## Link do wsparcia
 
-- GitHub Sponsors: https://github.com/sponsors/piotrgrechuta-web
+- GitHub Sponsors: https://github.com/sponsors/Piotr-Grechuta
 
 ## Co jest juz gotowe w repo
 

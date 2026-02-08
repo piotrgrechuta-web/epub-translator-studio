@@ -1,7 +1,7 @@
 # EPUB Translator Studio
 
-[![PR checks](https://github.com/piotrgrechuta-web/epub-translator-studio/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/piotrgrechuta-web/epub-translator-studio/actions/workflows/pr-checks.yml)
-[![Release](https://img.shields.io/github/v/release/piotrgrechuta-web/epub-translator-studio?display_name=tag)](https://github.com/piotrgrechuta-web/epub-translator-studio/releases)
+[![PR checks](https://github.com/Piotr-Grechuta/epub-translator-studio/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/Piotr-Grechuta/epub-translator-studio/actions/workflows/pr-checks.yml)
+[![Release](https://img.shields.io/github/v/release/Piotr-Grechuta/epub-translator-studio?display_name=tag)](https://github.com/Piotr-Grechuta/epub-translator-studio/releases)
 [![License: Personal Use Only](https://img.shields.io/badge/license-Personal%20Use%20Only-red.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](project-tkinter/app_main.py)
 
@@ -89,11 +89,11 @@ export GOOGLE_API_KEY="<YOUR_KEY>"
 - multi-device Git workflow: `project-tkinter/GIT_WORKFLOW_PL.md`
 - support info: `SUPPORT_PL.md`
 - docs index (Wiki/Pages ready): `docs/README.md`
-- online docs portal: `https://piotrgrechuta-web.github.io/epub-translator-studio/`
+- online docs portal: `https://piotr-grechuta.github.io/epub-translator-studio/`
 - where progress/UI/Wiki are visible: `docs/08-Status-UI-i-Wiki.md`
 
 ## Support
-- Sponsor: https://github.com/sponsors/piotrgrechuta-web
+- Sponsor: https://github.com/sponsors/Piotr-Grechuta
 - a support link is also available directly in Tkinter app UI (`Wesprzyj projekt`)
 - ready PL template for GitHub Sponsors profile: `.github/SPONSORS_PROFILE_TEMPLATE_PL.md`
 - ready PL outreach pack (posts/release CTA): `.github/SPONSORS_OUTREACH_PACK_PL.md`

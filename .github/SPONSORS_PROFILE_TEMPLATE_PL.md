@@ -1,7 +1,7 @@
 # GitHub Sponsors - gotowe tresci (PL)
 
 Ten plik jest gotowym szkicem do wklejenia w formularzu GitHub Sponsors
-dla konta `piotrgrechuta-web`.
+dla konta `Piotr-Grechuta`.
 
 ## 1) Short bio (krotki opis)
 
@@ -88,7 +88,7 @@ Ten poziom pozwala utrzymac regularny rozwoj, poprawki i dokumentacje projektu.
 3. Dodaj progi (tiers).
 4. Podlacz payout (Stripe / fiscal host) i uzupelnij dane.
 5. Wyslij do akceptacji.
-6. Po akceptacji sprawdz link: `https://github.com/sponsors/piotrgrechuta-web`.
+6. Po akceptacji sprawdz link: `https://github.com/sponsors/Piotr-Grechuta`.
 
 ## 6) Co jest juz skonfigurowane w repo
 

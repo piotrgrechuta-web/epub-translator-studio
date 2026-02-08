@@ -15,7 +15,7 @@ Ta sekcja daje minimalna sciezke uruchomienia aplikacji Tkinter (glowna aplikacj
 ## Szybki start: klon i branch
 
 ```powershell
-git clone https://github.com/piotrgrechuta-web/epub-translator-studio.git
+git clone https://github.com/Piotr-Grechuta/epub-translator-studio.git
 cd epub-translator-studio
 git checkout main
 git pull

@@ -3,7 +3,7 @@
 Gotowy pakiet ustawien strony repo pod widocznosc i sponsorowanie.
 
 Repo:
-- https://github.com/piotrgrechuta-web/epub-translator-studio
+- https://github.com/Piotr-Grechuta/epub-translator-studio
 
 ## 1) Description (GitHub -> About)
 
@@ -18,7 +18,7 @@ Desktop toolkit for AI-assisted EPUB translation, editing and QA workflows (Tkin
 Wklej:
 
 ```text
-https://github.com/piotrgrechuta-web/epub-translator-studio/releases
+https://github.com/Piotr-Grechuta/epub-translator-studio/releases
 ```
 
 ## 3) Topics (GitHub -> About)
@@ -45,7 +45,7 @@ epubcheck
 1. Utworz release z gotowego szkicu:
    - `.github/RELEASE_DRAFT_PL.md`
 2. W opisie release zostaw link wsparcia:
-   - https://github.com/sponsors/piotrgrechuta-web
+   - https://github.com/sponsors/Piotr-Grechuta
 
 ## 5) Szybka kontrola po zapisaniu
 
