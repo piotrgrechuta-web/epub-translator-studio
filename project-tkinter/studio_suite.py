@@ -27,10 +27,33 @@ from text_preserve import set_text_preserving_inline
 
 EN_HINTS = {"the", "and", "of", "to", "in", "for", "with", "that", "this", "is", "are"}
 EPUBCHECK_TIMEOUT_S = 120
+METRICS_BLOB_RE = re.compile(r"metrics\[(.*?)\]", re.IGNORECASE)
+METRICS_KV_RE = re.compile(r"([a-zA-Z_]+)\s*=\s*([^;]+)")
 
 
 def _txt(el: etree._Element) -> str:
     return etree.tostring(el, encoding="unicode", method="text").strip()
+
+
+def _parse_metrics_blob(message: str) -> Dict[str, float]:
+    out: Dict[str, float] = {}
+    text = str(message or "")
+    m = METRICS_BLOB_RE.search(text)
+    if not m:
+        return out
+    for key, raw in METRICS_KV_RE.findall(m.group(1)):
+        k = str(key).strip()
+        v = str(raw).strip().rstrip("%")
+        if not k:
+            continue
+        try:
+            if "." in v:
+                out[k] = float(v)
+            else:
+                out[k] = float(int(v))
+        except Exception:
+            continue
+    return out
 
 
 def _qa_scan_iter(epub: Path, segment_mode: str = "auto") -> Iterator[Dict[str, Any]]:
@@ -88,6 +111,7 @@ class StudioSuiteWindow:
         self.gui._configure_window_bounds(self.win, preferred_w=1200, preferred_h=820, min_w=760, min_h=520, maximize=True)
         self.db_path = gui.workdir / "translator_studio.db"
         self._tooltips: List[Any] = []
+        self._dash_release_notes_text = ""
         seg_mode = str(self.gui.db.get_setting("studio_segment_mode", "auto") or "auto").strip().lower()
         if seg_mode not in {"auto", "legacy"}:
             seg_mode = "auto"
@@ -978,7 +1002,11 @@ class StudioSuiteWindow:
 
     def _build_dashboard_tab(self, nb: ttk.Notebook) -> None:
         tab = ttk.Frame(nb, padding=8); nb.add(tab, text=self.gui.tr("studio.tab.dashboard", "Dashboard"))
-        ttk.Button(tab, text="Refresh", command=self._dash_refresh).pack(anchor="w")
+        bar = ttk.Frame(tab)
+        bar.pack(fill="x")
+        ttk.Button(bar, text="Refresh", command=self._dash_refresh).pack(side="left")
+        ttk.Button(bar, text="Copy release notes", command=self._dash_copy_release_notes).pack(side="left", padx=(8, 0))
+        ttk.Button(bar, text="Save release notes", command=self._dash_save_release_notes).pack(side="left", padx=(8, 0))
         self.dash = ScrolledText(tab, font=("Consolas", 10)); self.dash.pack(fill="both", expand=True, pady=(8, 0))
         self._dash_refresh()
 
@@ -1012,7 +1040,7 @@ class StudioSuiteWindow:
                 ).fetchall()
                 latest_run = con.execute(
                     """
-                    SELECT id, status, started_at, finished_at
+                    SELECT id, step, status, message, started_at, finished_at
                     FROM runs
                     WHERE project_id = ? AND step = ?
                     ORDER BY started_at DESC
@@ -1076,6 +1104,8 @@ class StudioSuiteWindow:
         api_out_tok = int(api_tgt_len / 4)
         api_total_tok = api_in_tok + api_out_tok
         latest_run_text = "n/a"
+        latest_metrics: Dict[str, float] = {}
+        latest_step = step
         if latest_run is not None:
             started = int(latest_run["started_at"] or 0)
             finished = int(latest_run["finished_at"] or 0)
@@ -1088,6 +1118,12 @@ class StudioSuiteWindow:
             else:
                 finished_txt = "running"
             latest_run_text = f"{started_txt} -> {finished_txt} | status={str(latest_run['status'] or '')}"
+            latest_step = str(latest_run["step"] or step)
+            latest_metrics = _parse_metrics_blob(str(latest_run["message"] or ""))
+        g_retry = int(latest_metrics.get("google_retries", 0) or 0)
+        g_timeout = int(latest_metrics.get("google_timeouts", 0) or 0)
+        o_retry = int(latest_metrics.get("ollama_retries", 0) or 0)
+        o_timeout = int(latest_metrics.get("ollama_timeouts", 0) or 0)
         self.dash.delete("1.0", "end")
         self.dash.insert(
             "1.0",
@@ -1102,6 +1138,7 @@ class StudioSuiteWindow:
         self.dash.insert("end", "\n")
         if self.gui.current_project_id is None:
             self.dash.insert("end", "Active project: n/a\n")
+            self._dash_release_notes_text = ""
             return
         self.dash.insert(
             "end",
@@ -1111,12 +1148,93 @@ class StudioSuiteWindow:
             f"Latest run: {latest_run_text}\n"
             f"Latest run completed: api={api_completed} reuse={reuse_completed}\n"
             f"Latest run estimated API tokens: in={api_in_tok} out={api_out_tok} total={api_total_tok} "
-            f"(~M={api_total_tok/1_000_000:.3f})\n",
+            f"(~M={api_total_tok/1_000_000:.3f})\n"
+            f"Latest runtime retries/timeouts: Google r={g_retry} t={g_timeout} | Ollama r={o_retry} t={o_timeout}\n",
         )
         if by_provider:
             self.dash.insert("end", "Latest run by provider:\n")
             for line in by_provider:
                 self.dash.insert("end", line + "\n")
+        self._dash_release_notes_text = self._dash_build_release_notes(
+            project_id=int(self.gui.current_project_id),
+            step=latest_step,
+            ledger_counts=ledger_counts,
+            latest_run_text=latest_run_text,
+            api_completed=api_completed,
+            reuse_completed=reuse_completed,
+            api_in_tok=api_in_tok,
+            api_out_tok=api_out_tok,
+            api_total_tok=api_total_tok,
+            by_provider=by_provider,
+            g_retry=g_retry,
+            g_timeout=g_timeout,
+            o_retry=o_retry,
+            o_timeout=o_timeout,
+        )
+
+    def _dash_build_release_notes(
+        self,
+        *,
+        project_id: int,
+        step: str,
+        ledger_counts: Dict[str, int],
+        latest_run_text: str,
+        api_completed: int,
+        reuse_completed: int,
+        api_in_tok: int,
+        api_out_tok: int,
+        api_total_tok: int,
+        by_provider: List[str],
+        g_retry: int,
+        g_timeout: int,
+        o_retry: int,
+        o_timeout: int,
+    ) -> str:
+        lines = [
+            "## Runtime Metrics (M4)",
+            f"- Project: `{project_id}`",
+            f"- Step: `{step}`",
+            f"- Latest run: {latest_run_text}",
+            (
+                f"- Ledger: done={ledger_counts['COMPLETED']} processing={ledger_counts['PROCESSING']} "
+                f"error={ledger_counts['ERROR']} pending={ledger_counts['PENDING']}"
+            ),
+            f"- Completed segments: api={api_completed}, reuse={reuse_completed}",
+            f"- Estimated API tokens: in={api_in_tok}, out={api_out_tok}, total={api_total_tok} (~M={api_total_tok/1_000_000:.3f})",
+            f"- Retry/timeout: Google r={g_retry}, t={g_timeout}; Ollama r={o_retry}, t={o_timeout}",
+        ]
+        if by_provider:
+            lines.append("- Provider distribution:")
+            lines.extend([f"  {x}" for x in by_provider])
+        return "\n".join(lines).strip() + "\n"
+
+    def _dash_copy_release_notes(self) -> None:
+        if not self._dash_release_notes_text.strip():
+            self._dash_refresh()
+        if not self._dash_release_notes_text.strip():
+            self._msg_info("Brak danych do release notes.")
+            return
+        self.win.clipboard_clear()
+        self.win.clipboard_append(self._dash_release_notes_text)
+        self._msg_info("Release notes skopiowane do schowka.")
+
+    def _dash_save_release_notes(self) -> None:
+        if not self._dash_release_notes_text.strip():
+            self._dash_refresh()
+        if not self._dash_release_notes_text.strip():
+            self._msg_info("Brak danych do zapisania.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Save release notes",
+            initialdir=str(self.gui.workdir),
+            defaultextension=".md",
+            filetypes=[("Markdown", "*.md"), ("Text", "*.txt"), ("All", "*.*")],
+            initialfile=f"release_notes_metrics_{time.strftime('%Y%m%d_%H%M%S')}.md",
+        )
+        if not path:
+            return
+        Path(path).write_text(self._dash_release_notes_text, encoding="utf-8")
+        self._msg_info(f"Zapisano release notes: {Path(path).name}")
 
     def _build_plugins_tab(self, nb: ttk.Notebook) -> None:
         tab = ttk.Frame(nb, padding=8); nb.add(tab, text=self.gui.tr("studio.tab.plugins", "Provider Plugins"))

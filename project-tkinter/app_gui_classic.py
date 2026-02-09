@@ -75,6 +75,10 @@ METRICS_BLOB_RE = re.compile(r"metrics\[(.*?)\]", re.IGNORECASE)
 METRICS_KV_RE = re.compile(r"([a-zA-Z_]+)\s*=\s*([^;]+)")
 EPUBCHECK_SEVERITY_RE = re.compile(r"\b(FATAL|ERROR|WARNING)\b", re.IGNORECASE)
 INLINE_TOKEN_RE = re.compile(r"\[\[TAG\d{3}\]\]")
+GOOGLE_HTTP_RETRY_RE = re.compile(r"\[Google\]\s+HTTP\s+\d+.*(?:pr[oó]ba|attempt)\s+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
+GOOGLE_TIMEOUT_RE = re.compile(r"\[Google\]\s+timeout/conn error.*(?:pr[oó]ba|attempt)\s+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
+OLLAMA_TIMEOUT_RE = re.compile(r"\[Ollama\]\s+timeout/conn error.*(?:pr[oó]ba|attempt)\s+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
+LEDGER_ERROR_ALERT_THRESHOLD = 5
 LOG = logging.getLogger(__name__)
 
 
@@ -234,9 +238,11 @@ class TranslatorGUI:
         self.ui_tokens: Dict[str, Any] = {}
         self._runtime_metrics: Dict[str, int] = {}
         self._runtime_metric_lines: set[str] = set()
+        self._runtime_retry_lines: set[str] = set()
         self.prompt_presets: List[Dict[str, str]] = []
         self.prompt_preset_by_label: Dict[str, Dict[str, str]] = {}
         self._ledger_counts: Dict[str, int] = {"PENDING": 0, "PROCESSING": 0, "COMPLETED": 0, "ERROR": 0}
+        self._ledger_alert_key: Optional[Tuple[int, str, int]] = None
         self._reset_runtime_metrics()
 
         self._configure_main_window()
@@ -282,8 +288,13 @@ class TranslatorGUI:
             "total_segments": 0,
             "cache_hits": 0,
             "tm_hits": 0,
+            "google_retries": 0,
+            "google_timeouts": 0,
+            "ollama_retries": 0,
+            "ollama_timeouts": 0,
         }
         self._runtime_metric_lines.clear()
+        self._runtime_retry_lines.clear()
 
     def _format_duration(self, seconds: Optional[int]) -> str:
         if seconds is None:
@@ -302,10 +313,16 @@ class TranslatorGUI:
         tm_hits = int(self._runtime_metrics.get("tm_hits", 0) or 0)
         reuse_hits = cache_hits + tm_hits
         reuse_rate = (reuse_hits / total) * 100.0 if total > 0 else 0.0
+        g_retry = int(self._runtime_metrics.get("google_retries", 0) or 0)
+        g_timeout = int(self._runtime_metrics.get("google_timeouts", 0) or 0)
+        o_retry = int(self._runtime_metrics.get("ollama_retries", 0) or 0)
+        o_timeout = int(self._runtime_metrics.get("ollama_timeouts", 0) or 0)
         dur_s = int(max(0.0, time.time() - self.run_started_at)) if self.run_started_at is not None else 0
         return (
             f"metrics[dur_s={dur_s};done={done};total={total};cache_hits={cache_hits};"
-            f"tm_hits={tm_hits};reuse_hits={reuse_hits};reuse_rate={reuse_rate:.1f}]"
+            f"tm_hits={tm_hits};reuse_hits={reuse_hits};reuse_rate={reuse_rate:.1f};"
+            f"google_retries={g_retry};google_timeouts={g_timeout};"
+            f"ollama_retries={o_retry};ollama_timeouts={o_timeout}]"
         )
 
     def _parse_metrics_blob(self, message: str) -> Dict[str, float]:
@@ -337,10 +354,15 @@ class TranslatorGUI:
         tm_hits = int(self._runtime_metrics.get("tm_hits", 0) or 0)
         reuse_hits = cache_hits + tm_hits
         reuse_rate = (reuse_hits / total) * 100.0 if total > 0 else 0.0
+        g_retry = int(self._runtime_metrics.get("google_retries", 0) or 0)
+        g_timeout = int(self._runtime_metrics.get("google_timeouts", 0) or 0)
+        o_retry = int(self._runtime_metrics.get("ollama_retries", 0) or 0)
+        o_timeout = int(self._runtime_metrics.get("ollama_timeouts", 0) or 0)
         dur_s = int(max(0.0, time.time() - self.run_started_at))
         self.run_metrics_var.set(
             f"Metryki runu: czas={self._format_duration(dur_s)} | seg={done}/{total} | "
-            f"cache={cache_hits} | tm={tm_hits} | reuse={reuse_rate:.1f}%"
+            f"cache={cache_hits} | tm={tm_hits} | reuse={reuse_rate:.1f}% | "
+            f"G(r={g_retry},t={g_timeout}) O(r={o_retry},t={o_timeout})"
         )
 
     def _collect_runtime_metrics_from_log(self, line: str) -> None:
@@ -366,6 +388,37 @@ class TranslatorGUI:
                 self._runtime_metrics["tm_hits"] += max(0, int(m_tm.group(2)))
             except Exception:
                 pass
+        if s not in self._runtime_retry_lines:
+            self._runtime_retry_lines.add(s)
+            m_g_http = GOOGLE_HTTP_RETRY_RE.search(s)
+            if m_g_http:
+                try:
+                    attempt = int(m_g_http.group(1))
+                    max_attempts = int(m_g_http.group(2))
+                    if attempt < max_attempts:
+                        self._runtime_metrics["google_retries"] += 1
+                except Exception:
+                    pass
+            m_g_timeout = GOOGLE_TIMEOUT_RE.search(s)
+            if m_g_timeout:
+                self._runtime_metrics["google_timeouts"] += 1
+                try:
+                    attempt = int(m_g_timeout.group(1))
+                    max_attempts = int(m_g_timeout.group(2))
+                    if attempt < max_attempts:
+                        self._runtime_metrics["google_retries"] += 1
+                except Exception:
+                    pass
+            m_o_timeout = OLLAMA_TIMEOUT_RE.search(s)
+            if m_o_timeout:
+                self._runtime_metrics["ollama_timeouts"] += 1
+                try:
+                    attempt = int(m_o_timeout.group(1))
+                    max_attempts = int(m_o_timeout.group(2))
+                    if attempt < max_attempts:
+                        self._runtime_metrics["ollama_retries"] += 1
+                except Exception:
+                    pass
 
     def _configure_window_bounds(
         self,
@@ -2139,13 +2192,18 @@ class TranslatorGUI:
         tm_hits = int(parsed.get("tm_hits", 0) or 0)
         reuse_hits = int(parsed.get("reuse_hits", cache_hits + tm_hits) or 0)
         reuse_rate = float(parsed.get("reuse_rate", 0.0) or 0.0)
+        google_retries = int(parsed.get("google_retries", 0) or 0)
+        google_timeouts = int(parsed.get("google_timeouts", 0) or 0)
+        ollama_retries = int(parsed.get("ollama_retries", 0) or 0)
+        ollama_timeouts = int(parsed.get("ollama_timeouts", 0) or 0)
         if total > 0 and reuse_rate <= 0.0 and reuse_hits > 0:
             reuse_rate = (reuse_hits / total) * 100.0
         status = self._normalize_stage_status(str(last["status"] or "none"))
         step = str(last["step"] or "-")
         self.run_metrics_var.set(
             f"Ostatni run: {step}/{status} | czas={self._format_duration(duration_s)} | "
-            f"seg={done}/{total} | cache={cache_hits} | tm={tm_hits} | reuse={reuse_rate:.1f}%"
+            f"seg={done}/{total} | cache={cache_hits} | tm={tm_hits} | reuse={reuse_rate:.1f}% | "
+            f"G(r={google_retries},t={google_timeouts}) O(r={ollama_retries},t={ollama_timeouts})"
         )
 
     def _export_project(self) -> None:
@@ -3260,11 +3318,28 @@ class TranslatorGUI:
         total = sum(counts.values())
         if project_id is None:
             self.ledger_status_var.set(self.tr("status.ledger.no_project", "Ledger: select project"))
+            self._ledger_alert_key = None
         elif not available:
             self.ledger_status_var.set(self.tr("status.ledger.unavailable", "Ledger: unavailable (run translation once)"))
+            self._ledger_alert_key = None
         elif total <= 0:
             self.ledger_status_var.set(self.tr("status.ledger.empty", "Ledger: no segments yet"))
+            self._ledger_alert_key = None
         else:
+            err_count = int(counts["ERROR"] or 0)
+            alert_suffix = ""
+            if err_count > LEDGER_ERROR_ALERT_THRESHOLD:
+                alert_suffix = f" | ALERT: error>{LEDGER_ERROR_ALERT_THRESHOLD}"
+                alert_key = (int(project_id), str(step), err_count)
+                if self._ledger_alert_key != alert_key:
+                    self._ledger_alert_key = alert_key
+                    self._set_inline_notice(
+                        f"Ledger alert: errors={err_count} (threshold>{LEDGER_ERROR_ALERT_THRESHOLD}).",
+                        level="warn",
+                        timeout_ms=9000,
+                    )
+            else:
+                self._ledger_alert_key = None
             self.ledger_status_var.set(
                 self.tr(
                     "status.ledger.summary",
@@ -3275,6 +3350,7 @@ class TranslatorGUI:
                     pending=counts["PENDING"],
                     total=total,
                 )
+                + alert_suffix
             )
         self._draw_ledger_bar()
 

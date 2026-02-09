@@ -3,8 +3,8 @@
 Status:
 - `M1 wdrozone` w kodzie i dokumentacji (2026-02-08),
 - `M2 wdrozone` w kodzie i CI (2026-02-08),
-- `M3 w toku`: Issue 8 i 9 `zrealizowane`, Issue 7 `do domkniecia` (inicjalizacja Wiki backend),
-- `M4 w realizacji`: memory-first translation (cache + decision memory + adaptive prompting), z wdrozonym mini-dashboardem ledgera i presetami promptow Gemini,
+- `M3 zamrozone`: blokada po stronie GitHub Wiki backend (Issue 7 odlozone),
+- `M4 domkniete`: memory-first translation (cache + decision memory + adaptive prompting), z domknietymi metrykami ledgera/retry/timeout i eksportem release notes,
 - `M5 plan zatwierdzony`: EPUB-aware segmentacja i integralnosc markup (`&shy;`, inline tags),
 - `M6 plan zatwierdzony`: diff-aware retranslation + semantic diff gate do recenzji,
 - `M7 w realizacji`: wdrozony szkielet serii (project->series, baza serii, manager terminow, merge glosariusza).
@@ -15,8 +15,8 @@ Zamienic roadmape na konkretne, mierzalne zadania z jasnym zakresem i kryteriami
 
 ## Aktywne milestone'y
 
-1. `M3: Workflow + Docs + Wiki (domkniecie)`
-2. `M4: Memory-First Translation Engine`
+1. `M4: Memory-First Translation Engine`
+2. `M3: Workflow + Docs + Wiki (zamrozone)`
 3. `M5: EPUB-Aware Segmentation + Markup Integrity`
 4. `M6: Smart Retranslation + Semantic Diff QA`
 5. `M7: Series Style Memory + Batch Library`
@@ -79,7 +79,7 @@ Status M2: `zrealizowane`.
 
 ## M3: Workflow + Docs + Wiki
 
-Status M3: `w toku` (2/3 issue zamkniete).
+Status M3: `zamrozone` (2/3 issue zamkniete, blokada zewnetrzna po stronie GitHub Wiki backend).
 
 ### Issue 7: Inicjalizacja i utrzymanie Wiki
 - Zakres:
@@ -89,7 +89,7 @@ Status M3: `w toku` (2/3 issue zamkniete).
   - `/wiki` dziala bez przekierowania na strone repo,
   - wiki ma minimum 1 strone i sidebar.
 
-Status: `w toku` (backend Wiki wymaga inicjalizacji pierwszej strony `Home` przez UI GitHub).
+Status: `zamrozone` (backend Wiki wymaga inicjalizacji pierwszej strony `Home` przez UI GitHub).
 
 Postep:
 - gotowy pakiet stron wiki w repo: `docs/wiki/Home.md`, `docs/wiki/_Sidebar.md`, `docs/wiki/Workflow-and-Recovery.md`,
@@ -116,7 +116,7 @@ Status: `zrealizowane`.
 
 ## M4: Memory-First Translation Engine
 
-Status M4: `w realizacji`.
+Status M4: `zrealizowane`.
 
 ### Issue #26: Segment cache + hash reuse (book memory)
 - Zakres:
@@ -128,15 +128,13 @@ Status M4: `w realizacji`.
   - cache jest odporny na restart aplikacji,
   - metryki cache sa widoczne w podsumowaniu runu.
 
-Status:
-- `czesc wdrozona`:
+Status: `zrealizowane`:
 1. ledger segmentow jest seedowany upfront dla calego EPUB (`PENDING` dla calego zakresu),
 2. restart runu korzysta z ledgera (`COMPLETED`) bez utraty idempotentnosci,
-3. ledger jest czyszczony z nieaktualnych segmentow po zmianie zrodla.
-- `do domkniecia`:
-1. dopiac eksport metryk ledgera do widoku release notes (obecnie dashboard + runtime),
-2. rozszerzyc telemetry o histogram retry/timeouts per provider.
-3. dodac alerty progowe (np. ERROR > N) bezposrednio przy pasku ledgera.
+3. ledger jest czyszczony z nieaktualnych segmentow po zmianie zrodla,
+4. metryki ledgera sa eksportowane do widoku release notes (`Studio Tools -> Dashboard`),
+5. telemetry retry/timeouts per provider (Google/Ollama) jest widoczne w runtime i historii runow,
+6. alert progowy `ERROR > N` jest pokazywany bezposrednio przy pasku ledgera.
 
 ### Issue #34: Model-specific prompt presets (GUI)
 - Zakres:
@@ -257,12 +255,12 @@ Status:
 
 ## Kolejnosc realizacji (zaktualizowana)
 
-1. Domkniecie `M3 / Issue 7` (Wiki backend + Home + sidebar).
+1. `M4` utrzymanie i stabilizacja po wdrozeniu.
 2. Domkniecie `M7 / Issue 31` (style rules + lorebook + versioning).
-3. `M4` (memory-first: cache + decision memory + adaptive few-shot).
-4. `M5` (segmentacja EPUB + integralnosc markup).
-5. `M6` (diff-aware + semantic diff gate).
-6. `M7 / Issue 32` (skalowanie batch + opcjonalny fine-tuning).
+3. `M5` (segmentacja EPUB + integralnosc markup).
+4. `M6` (diff-aware + semantic diff gate).
+5. `M7 / Issue 32` (skalowanie batch + opcjonalny fine-tuning).
+6. `M3 / Issue 7` (Wiki backend + Home + sidebar) dopiero po odmrozeniu.
 
 ## Definicja publikacji milestone
 

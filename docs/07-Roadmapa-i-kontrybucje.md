@@ -1,13 +1,13 @@
 # 07. Roadmapa i kontrybucje
 
-## 7.0. Status wdrozenia (2026-02-08)
+## 7.0. Status wdrozenia (2026-02-09)
 
 - `M1`: zrealizowane.
 - `M2`: zrealizowane.
-- `M3`: w toku (pakiet Wiki gotowy, backend Wiki czeka na inicjalizacje `Home` w UI GitHub).
+- `M3`: zamrozone (blokada po stronie GitHub Wiki; bez wpływu na runtime aplikacji).
 - `M7`: uruchomiony szkielet techniczny (seria + slownik serii + auto-detekcja + merge glosariusza).
-- `M4`: w realizacji (ledger orchestration upfront + twardy gate EPUBCheck + tokenized inline editor + dashboard ledger metrics + stale widoczny pasek ledgera + presety promptow Gemini w GUI).
-- `M5-M6`: plan zatwierdzony, kolejne incrementy po domknieciu M3/M4.
+- `M4`: domkniete (ledger orchestration upfront + twardy gate EPUBCheck + tokenized inline editor + dashboard ledger metrics + stale widoczny pasek ledgera + presety promptow Gemini w GUI + telemetry retry/timeout + export metryk do release notes + alert progowy ledgera).
+- `M5-M6`: plan zatwierdzony, kolejne incrementy po M4.
 
 ## 7.1. Priorytety techniczne
 
@@ -26,7 +26,10 @@
 Aktualny increment M4 (wdrozony):
 1. mini-dashboard ledgera (`done/processing/error/pending`) widoczny stale w sekcji `Uruchomienie`,
 2. presety promptow pod provider/mode z gotowymi recepturami Gemini,
-3. testy jednostkowe logiki presetow.
+3. telemetry retry/timeout per provider (Google/Ollama) w runtime metrykach,
+4. alert progowy `ERROR > N` przy pasku ledgera,
+5. export metryk runu/ledgera do sekcji release notes (`Studio Tools -> Dashboard`),
+6. testy jednostkowe logiki presetow.
 
 ## 7.3. Jak zglaszac zmiany
 
@@ -70,7 +73,7 @@ Jesli projekt oszczedza czas:
 - mniejsza liczba problemow z konfiguracja,
 - szybszy onboarding nowego urzadzenia.
 
-## 7.8. Kolejne milestone'y (po M1-M3)
+## 7.8. Kolejne milestone'y (po M1-M2, M3 zamrozone)
 
 1. `M4: Memory-First Translation Engine`
 2. `M5: EPUB-Aware Segmentation + Markup Integrity`
