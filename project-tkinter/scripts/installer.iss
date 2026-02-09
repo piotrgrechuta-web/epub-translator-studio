@@ -1,5 +1,5 @@
 #define MyAppName "EPUB Translator Studio"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "0.5.0"
 #define MyAppPublisher "EPUB Translator Studio"
 #define MyAppExeName "EPUBTranslatorStudio.exe"
 
