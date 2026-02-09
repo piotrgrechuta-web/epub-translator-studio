@@ -4437,6 +4437,38 @@ class TranslatorGUI:
         elif self.series_batch_context is not None and bool(self.series_batch_context.get("stopped")):
             self.root.after(200, lambda: self._finalize_series_batch("stopped"))
 
+    def _run_process_worker(self, cmd: List[str], provider: str, google_api_key: str, run_step: str) -> None:
+        runner_db: Optional[ProjectDB] = None
+        try:
+            runner_db = ProjectDB(SQLITE_FILE)
+            env = self._build_runtime_env(provider, google_api_key)
+            self.proc = subprocess.Popen(
+                cmd,
+                cwd=str(self.workdir),
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+
+            assert self.proc.stdout is not None
+            for line in self.proc.stdout:
+                self.log_queue.put(line)
+
+            code = self.proc.wait()
+            code = self._apply_run_finish_gates(code, runner_db, run_step)
+            if code == 0:
+                self._handle_run_success(runner_db, run_step)
+            else:
+                self._handle_run_failure(runner_db, code)
+        except Exception as e:
+            self._handle_run_exception(runner_db, e)
+        finally:
+            self._finalize_run_thread(runner_db)
+
     def _start_process(self) -> None:
         err = self._validate()
         if err:
@@ -4455,40 +4487,10 @@ class TranslatorGUI:
         cmd = self._build_command()
         redacted = self._redacted_cmd(cmd)
         self._prepare_run_start(run_step, redacted)
-
-        def runner() -> None:
-            runner_db: Optional[ProjectDB] = None
-            try:
-                runner_db = ProjectDB(SQLITE_FILE)
-                env = self._build_runtime_env(provider, google_api_key)
-                self.proc = subprocess.Popen(
-                    cmd,
-                    cwd=str(self.workdir),
-                    env=env,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    bufsize=1,
-                )
-
-                assert self.proc.stdout is not None
-                for line in self.proc.stdout:
-                    self.log_queue.put(line)
-
-                code = self.proc.wait()
-                code = self._apply_run_finish_gates(code, runner_db, run_step)
-                if code == 0:
-                    self._handle_run_success(runner_db, run_step)
-                else:
-                    self._handle_run_failure(runner_db, code)
-            except Exception as e:
-                self._handle_run_exception(runner_db, e)
-            finally:
-                self._finalize_run_thread(runner_db)
-
-        threading.Thread(target=runner, daemon=True).start()
+        threading.Thread(
+            target=lambda: self._run_process_worker(cmd, provider, google_api_key, run_step),
+            daemon=True,
+        ).start()
 
     def _prepare_validation_start(self, cmd: List[str], target: Path) -> None:
         self._append_log("\n=== START WALIDACJI ===\n")
@@ -4577,6 +4579,36 @@ class TranslatorGUI:
             return in_file
         return None
 
+    def _run_validation_worker(self, cmd: List[str]) -> None:
+        runner_db: Optional[ProjectDB] = None
+        try:
+            runner_db = ProjectDB(SQLITE_FILE)
+            self.proc = subprocess.Popen(
+                cmd,
+                cwd=str(self.workdir),
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+
+            assert self.proc.stdout is not None
+            for line in self.proc.stdout:
+                self.log_queue.put(line)
+
+            code = self.proc.wait()
+            if code == 0:
+                self._handle_validation_success(runner_db)
+            else:
+                self._handle_validation_failure(runner_db, code)
+        except Exception as e:
+            self._handle_validation_exception(runner_db, e)
+        finally:
+            self._finalize_validation_thread(runner_db)
+
     def _start_validation(self) -> None:
         if self.proc is not None:
             self._msg_info(self.tr("info.process_running", "Process is already running."))
@@ -4590,38 +4622,7 @@ class TranslatorGUI:
 
         cmd = self._build_validation_command(str(target))
         self._prepare_validation_start(cmd, target)
-
-        def runner() -> None:
-            runner_db: Optional[ProjectDB] = None
-            try:
-                runner_db = ProjectDB(SQLITE_FILE)
-                self.proc = subprocess.Popen(
-                    cmd,
-                    cwd=str(self.workdir),
-                    env={**os.environ, "PYTHONUNBUFFERED": "1"},
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    bufsize=1,
-                )
-
-                assert self.proc.stdout is not None
-                for line in self.proc.stdout:
-                    self.log_queue.put(line)
-
-                code = self.proc.wait()
-                if code == 0:
-                    self._handle_validation_success(runner_db)
-                else:
-                    self._handle_validation_failure(runner_db, code)
-            except Exception as e:
-                self._handle_validation_exception(runner_db, e)
-            finally:
-                self._finalize_validation_thread(runner_db)
-
-        threading.Thread(target=runner, daemon=True).start()
+        threading.Thread(target=lambda: self._run_validation_worker(cmd), daemon=True).start()
 
     def _stop_process(self) -> None:
         if self.proc is None:
