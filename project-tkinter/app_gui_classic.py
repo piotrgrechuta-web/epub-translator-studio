@@ -432,60 +432,76 @@ class TranslatorGUI:
             f"G(r={g_retry},t={g_timeout}) O(r={o_retry},t={o_timeout})"
         )
 
-    def _collect_runtime_metrics_from_log(self, line: str) -> None:
-        s = str(line or "").strip()
-        if not s:
-            return
-        m_total = TOTAL_SEGMENTS_RE.search(s)
+    @staticmethod
+    def _is_retry_attempt(attempt: int, max_attempts: int) -> bool:
+        return int(attempt) < int(max_attempts)
+
+    def _update_runtime_segment_metrics(self, line: str) -> None:
+        m_total = TOTAL_SEGMENTS_RE.search(line)
         if m_total:
             try:
                 self._runtime_metrics["total_segments"] = max(0, int(m_total.group(1)))
             except Exception:
                 pass
-        m_cache = CACHE_SEGMENTS_RE.search(s)
+
+        m_cache = CACHE_SEGMENTS_RE.search(line)
         if m_cache:
             try:
                 self._runtime_metrics["cache_hits"] = max(0, int(m_cache.group(1)))
             except Exception:
                 pass
-        m_tm = CHAPTER_CACHE_TM_RE.search(s)
-        if m_tm and s not in self._runtime_metric_lines:
-            self._runtime_metric_lines.add(s)
+
+        m_tm = CHAPTER_CACHE_TM_RE.search(line)
+        if m_tm and line not in self._runtime_metric_lines:
+            self._runtime_metric_lines.add(line)
             try:
                 self._runtime_metrics["tm_hits"] += max(0, int(m_tm.group(2)))
             except Exception:
                 pass
-        if s not in self._runtime_retry_lines:
-            self._runtime_retry_lines.add(s)
-            m_g_http = GOOGLE_HTTP_RETRY_RE.search(s)
-            if m_g_http:
-                try:
-                    attempt = int(m_g_http.group(1))
-                    max_attempts = int(m_g_http.group(2))
-                    if attempt < max_attempts:
-                        self._runtime_metrics["google_retries"] += 1
-                except Exception:
-                    pass
-            m_g_timeout = GOOGLE_TIMEOUT_RE.search(s)
-            if m_g_timeout:
-                self._runtime_metrics["google_timeouts"] += 1
-                try:
-                    attempt = int(m_g_timeout.group(1))
-                    max_attempts = int(m_g_timeout.group(2))
-                    if attempt < max_attempts:
-                        self._runtime_metrics["google_retries"] += 1
-                except Exception:
-                    pass
-            m_o_timeout = OLLAMA_TIMEOUT_RE.search(s)
-            if m_o_timeout:
-                self._runtime_metrics["ollama_timeouts"] += 1
-                try:
-                    attempt = int(m_o_timeout.group(1))
-                    max_attempts = int(m_o_timeout.group(2))
-                    if attempt < max_attempts:
-                        self._runtime_metrics["ollama_retries"] += 1
-                except Exception:
-                    pass
+
+    def _update_runtime_retry_metrics(self, line: str) -> None:
+        if line in self._runtime_retry_lines:
+            return
+        self._runtime_retry_lines.add(line)
+
+        m_g_http = GOOGLE_HTTP_RETRY_RE.search(line)
+        if m_g_http:
+            try:
+                attempt = int(m_g_http.group(1))
+                max_attempts = int(m_g_http.group(2))
+                if self._is_retry_attempt(attempt, max_attempts):
+                    self._runtime_metrics["google_retries"] += 1
+            except Exception:
+                pass
+
+        m_g_timeout = GOOGLE_TIMEOUT_RE.search(line)
+        if m_g_timeout:
+            self._runtime_metrics["google_timeouts"] += 1
+            try:
+                attempt = int(m_g_timeout.group(1))
+                max_attempts = int(m_g_timeout.group(2))
+                if self._is_retry_attempt(attempt, max_attempts):
+                    self._runtime_metrics["google_retries"] += 1
+            except Exception:
+                pass
+
+        m_o_timeout = OLLAMA_TIMEOUT_RE.search(line)
+        if m_o_timeout:
+            self._runtime_metrics["ollama_timeouts"] += 1
+            try:
+                attempt = int(m_o_timeout.group(1))
+                max_attempts = int(m_o_timeout.group(2))
+                if self._is_retry_attempt(attempt, max_attempts):
+                    self._runtime_metrics["ollama_retries"] += 1
+            except Exception:
+                pass
+
+    def _collect_runtime_metrics_from_log(self, line: str) -> None:
+        s = str(line or "").strip()
+        if not s:
+            return
+        self._update_runtime_segment_metrics(s)
+        self._update_runtime_retry_metrics(s)
 
     def _configure_window_bounds(
         self,
