@@ -4004,47 +4004,53 @@ class TranslatorGUI:
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
 
+    def _try_update_global_progress(self, line: str) -> bool:
+        m = GLOBAL_PROGRESS_RE.search(line)
+        if not m:
+            return False
+        done = int(m.group(1))
+        total = int(m.group(2))
+        pct_str = m.group(3).strip()
+        detail = m.group(4).strip()
+        self.global_done = done
+        self.global_total = total
+        pct = (done / total) * 100.0 if total > 0 else 0.0
+        self.progress_value_var.set(pct)
+        self.progress_text_var.set(self.tr("status.progress.runtime", "Progress: {done} / {total} ({pct})", done=done, total=total, pct=pct_str))
+        self.phase_var.set(self.tr("status.phase.detail", "Phase: {detail}", detail=detail))
+        self._set_status(self.tr("status.translation.running", "Translation in progress..."), "running")
+        self._update_live_run_metrics()
+        return True
+
+    def _update_phase_from_log_line(self, line: str) -> None:
+        if "=== POST" in line and "GLOBAL" in line:
+            self.phase_var.set(self.tr("status.phase.prescan", "Phase: project pre-scan"))
+        elif "=== WALIDACJA EPUB ===" in line:
+            self.phase_var.set(self.tr("status.phase.validation", "Phase: EPUB validation"))
+        elif "[VAL-WARN]" in line:
+            self.phase_var.set(self.tr("status.phase.validation_warn", "Phase: validation (warnings)"))
+        elif "[VAL-ERR]" in line:
+            self.phase_var.set(self.tr("status.phase.validation_err", "Phase: validation (errors)"))
+        elif "VALIDATION RESULT: OK" in line:
+            self.phase_var.set(self.tr("status.phase.validation_done", "Phase: validation complete"))
+        elif "[CHECKPOINT]" in line:
+            self.phase_var.set(self.tr("status.phase.checkpoint", "Phase: checkpoint write"))
+        elif "[Google]" in line:
+            self.phase_var.set(self.tr("status.phase.google", "Phase: Google requests"))
+        elif "[Ollama]" in line:
+            self.phase_var.set(self.tr("status.phase.ollama", "Phase: Ollama requests"))
+        elif "=== KONIEC ===" in line:
+            self.phase_var.set(self.tr("status.phase.finalizing", "Phase: finalizing"))
+
     def _process_log_line(self, line: str) -> None:
         s = line.strip()
         if not s:
             return
         self.last_log_at = time.time()
         self._collect_runtime_metrics_from_log(s)
-
-        m = GLOBAL_PROGRESS_RE.search(s)
-        if m:
-            done = int(m.group(1))
-            total = int(m.group(2))
-            pct_str = m.group(3).strip()
-            detail = m.group(4).strip()
-            self.global_done = done
-            self.global_total = total
-            pct = (done / total) * 100.0 if total > 0 else 0.0
-            self.progress_value_var.set(pct)
-            self.progress_text_var.set(self.tr("status.progress.runtime", "Progress: {done} / {total} ({pct})", done=done, total=total, pct=pct_str))
-            self.phase_var.set(self.tr("status.phase.detail", "Phase: {detail}", detail=detail))
-            self._set_status(self.tr("status.translation.running", "Translation in progress..."), "running")
-            self._update_live_run_metrics()
+        if self._try_update_global_progress(s):
             return
-
-        if "=== POST" in s and "GLOBAL" in s:
-            self.phase_var.set(self.tr("status.phase.prescan", "Phase: project pre-scan"))
-        elif "=== WALIDACJA EPUB ===" in s:
-            self.phase_var.set(self.tr("status.phase.validation", "Phase: EPUB validation"))
-        elif "[VAL-WARN]" in s:
-            self.phase_var.set(self.tr("status.phase.validation_warn", "Phase: validation (warnings)"))
-        elif "[VAL-ERR]" in s:
-            self.phase_var.set(self.tr("status.phase.validation_err", "Phase: validation (errors)"))
-        elif "VALIDATION RESULT: OK" in s:
-            self.phase_var.set(self.tr("status.phase.validation_done", "Phase: validation complete"))
-        elif "[CHECKPOINT]" in s:
-            self.phase_var.set(self.tr("status.phase.checkpoint", "Phase: checkpoint write"))
-        elif "[Google]" in s:
-            self.phase_var.set(self.tr("status.phase.google", "Phase: Google requests"))
-        elif "[Ollama]" in s:
-            self.phase_var.set(self.tr("status.phase.ollama", "Phase: Ollama requests"))
-        elif "=== KONIEC ===" in s:
-            self.phase_var.set(self.tr("status.phase.finalizing", "Phase: finalizing"))
+        self._update_phase_from_log_line(s)
         self._update_live_run_metrics()
 
     def _poll_log_queue(self) -> None:
