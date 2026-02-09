@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from project_db import ProjectDB  # noqa: E402
+from project_db import ProjectDB, SCHEMA_VERSION  # noqa: E402
 from studio_suite import _safe_extract_zip  # noqa: E402
 
 
@@ -139,7 +139,7 @@ def test_managed_schema_migration_creates_backup_and_tracking_row(tmp_path: Path
     try:
         assert db.last_migration_summary is not None
         assert int(db.last_migration_summary["from_schema"]) == 7
-        assert int(db.last_migration_summary["to_schema"]) == 8
+        assert int(db.last_migration_summary["to_schema"]) == int(SCHEMA_VERSION)
         backup_dir = Path(str(db.last_migration_summary["backup_dir"]))
         assert backup_dir.exists()
         assert (backup_dir / db_path.name).exists()
@@ -150,7 +150,7 @@ def test_managed_schema_migration_creates_backup_and_tracking_row(tmp_path: Path
         assert mig is not None
         assert str(mig["status"]) == "ok"
         assert int(mig["from_schema"]) == 7
-        assert int(mig["to_schema"]) == 8
+        assert int(mig["to_schema"]) == int(SCHEMA_VERSION)
 
         cols = {str(r["name"]) for r in db.conn.execute("PRAGMA table_info(projects)").fetchall()}
         assert "series_id" in cols
