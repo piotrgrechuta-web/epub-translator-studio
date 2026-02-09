@@ -15,7 +15,12 @@ from runtime_core import RunOptions, build_run_command  # noqa: E402
 from app_gui_classic import parse_epubcheck_findings  # noqa: E402
 from project_db import ProjectDB  # noqa: E402
 from text_preserve import set_text_preserving_inline, tokenize_inline_markup, apply_tokenized_inline_markup  # noqa: E402
-from translation_engine import SegmentLedger, seed_segment_ledger_from_epub, validate_entity_integrity  # noqa: E402
+from translation_engine import (  # noqa: E402
+    SegmentLedger,
+    seed_segment_ledger_from_epub,
+    validate_entity_integrity,
+    semantic_similarity_score,
+)
 
 
 def _make_epub(tmp_path: Path) -> Path:
@@ -165,6 +170,67 @@ def test_validate_entity_integrity_detects_entity_drop(tmp_path: Path) -> None:
     assert ok is False
     assert report["delta_soft_hyphen"] < 0 or report["delta_nbsp"] < 0
     assert "ENTITY-INTEGRITY" in msg
+
+
+def test_semantic_similarity_score_distinguishes_close_and_far_texts() -> None:
+    close = semantic_similarity_score("To jest bardzo krotkie zdanie.", "To jest krotkie zdanie.")
+    far = semantic_similarity_score("Kot siedzi na kanapie.", "Samolot startuje z lotniska.")
+    assert close > 0.55
+    assert far < 0.55
+
+
+def test_segment_ledger_semantic_findings_replace_previous_open_rows(tmp_path: Path) -> None:
+    db_path = tmp_path / "semantic_findings.db"
+    db = ProjectDB(db_path)
+    try:
+        pid = db.create_project("Semantic gate project")
+    finally:
+        db.close()
+
+    ledger = SegmentLedger(db_path, project_id=pid, run_step="translate")
+    try:
+        inserted = ledger.replace_semantic_diff_findings(
+            [
+                {
+                    "chapter_path": "OPS/Text/ch1.xhtml",
+                    "segment_index": 1,
+                    "segment_id": "sid-1",
+                    "severity": "warn",
+                    "message": "Semantic drift score=0.40",
+                },
+                {
+                    "chapter_path": "OPS/Text/ch1.xhtml",
+                    "segment_index": 2,
+                    "segment_id": "sid-2",
+                    "severity": "error",
+                    "message": "Semantic drift score=0.20",
+                },
+            ]
+        )
+        assert inserted == 2
+        inserted2 = ledger.replace_semantic_diff_findings(
+            [
+                {
+                    "chapter_path": "OPS/Text/ch2.xhtml",
+                    "segment_index": 4,
+                    "segment_id": "sid-3",
+                    "severity": "warn",
+                    "message": "Semantic drift score=0.50",
+                }
+            ]
+        )
+        assert inserted2 == 1
+    finally:
+        ledger.close()
+
+    db2 = ProjectDB(db_path)
+    try:
+        rows = db2.list_qa_findings(pid, step="translate", status=None)
+        sem_rows = [r for r in rows if str(r["rule_code"]) == "SEMANTIC_DIFF" and str(r["status"]) in {"open", "in_progress"}]
+        assert len(sem_rows) == 1
+        assert str(sem_rows[0]["segment_id"]) == "sid-3"
+    finally:
+        db2.close()
 
 
 def test_build_run_command_includes_run_step() -> None:

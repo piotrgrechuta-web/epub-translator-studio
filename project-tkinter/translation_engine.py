@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from html.entities import name2codepoint
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Protocol
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Protocol
 
 import requests
 from requests.exceptions import ReadTimeout, ConnectionError as ReqConnectionError, HTTPError
@@ -117,13 +117,20 @@ class Cache:
         except Exception:
             return
 
-    def get(self, seg_id: str) -> Optional[str]:
-        if seg_id in self.data:
-            return self.data[seg_id]
+    def get_exact(self, seg_id: str) -> Optional[str]:
+        return self.data.get(seg_id)
+
+    def get_by_prefix(self, seg_id: str) -> Optional[str]:
         p = _cache_prefix(seg_id)
         if p and p in self.prefix_map:
             return self.prefix_map[p]
         return None
+
+    def get(self, seg_id: str) -> Optional[str]:
+        exact = self.get_exact(seg_id)
+        if exact is not None:
+            return exact
+        return self.get_by_prefix(seg_id)
 
     def __setitem__(self, seg_id: str, translation: str) -> None:
         self.data[seg_id] = translation
@@ -719,6 +726,26 @@ def _plain_text_from_inner_xml(inner_xml_text: str) -> str:
     no_tags = html.unescape(no_tags)
     no_tags = re.sub(r"\s+", " ", no_tags)
     return no_tags.strip()
+
+
+def semantic_similarity_score(prev_text: str, new_text: str) -> float:
+    """Lightweight semantic proxy (token overlap + sequence similarity)."""
+    a = _plain_text_from_inner_xml(prev_text).lower()
+    b = _plain_text_from_inner_xml(new_text).lower()
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    seq_ratio = SequenceMatcher(None, a, b).ratio()
+    tok_a = set(re.findall(r"[a-z0-9ąćęłńóśźż]{2,}", a, flags=re.IGNORECASE))
+    tok_b = set(re.findall(r"[a-z0-9ąćęłńóśźż]{2,}", b, flags=re.IGNORECASE))
+    if not tok_a and not tok_b:
+        jaccard = 1.0
+    elif not tok_a or not tok_b:
+        jaccard = 0.0
+    else:
+        jaccard = len(tok_a & tok_b) / max(1, len(tok_a | tok_b))
+    return max(0.0, min(1.0, (0.55 * seq_ratio) + (0.45 * jaccard)))
 
 
 def looks_like_polish(inner_xml_text: str) -> bool:
@@ -1610,6 +1637,59 @@ class SegmentLedger:
         )
         self.conn.commit()
 
+    def replace_semantic_diff_findings(self, findings: List[Dict[str, Any]]) -> int:
+        if self.project_id <= 0:
+            return 0
+        exists = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'qa_findings'"
+        ).fetchone()
+        if exists is None:
+            return 0
+        now = int(time.time())
+        self.conn.execute(
+            """
+            DELETE FROM qa_findings
+            WHERE project_id = ?
+              AND step = ?
+              AND rule_code = 'SEMANTIC_DIFF'
+              AND status IN ('open','in_progress')
+            """,
+            (self.project_id, self.run_step),
+        )
+        if not findings:
+            self.conn.commit()
+            return 0
+        payload: List[Tuple[object, ...]] = []
+        for rec in findings:
+            payload.append(
+                (
+                    self.project_id,
+                    self.run_step,
+                    str(rec.get("chapter_path") or ""),
+                    int(rec.get("segment_index") or 0),
+                    str(rec.get("segment_id") or ""),
+                    str(rec.get("severity") or "warn"),
+                    "SEMANTIC_DIFF",
+                    str(rec.get("message") or "")[:1200],
+                    "open",
+                    "",
+                    now,
+                    now,
+                )
+            )
+        self.conn.executemany(
+            """
+            INSERT INTO qa_findings(
+              project_id, step, chapter_path, segment_index, segment_id, severity,
+              rule_code, message, status, assignee, created_at, updated_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            payload,
+        )
+        self.conn.commit()
+        return len(payload)
+
 
 def default_checkpoint_json_path(output_epub: Path) -> Path:
     return output_epub.with_name(output_epub.stem + ".checkpoint.json")
@@ -2002,6 +2082,11 @@ def translate_epub(
     tm: Optional[TranslationMemory] = None,
     segment_ledger: Optional[SegmentLedger] = None,
     tm_fuzzy_threshold: float = 0.92,
+    diff_aware: bool = True,
+    semantic_gate_enabled: bool = True,
+    semantic_gate_threshold: float = 0.58,
+    semantic_gate_hard_threshold: float = 0.42,
+    semantic_gate_min_chars: int = 24,
 ) -> None:
     source_lang = (source_lang or "en").strip().lower()
     target_lang = (target_lang or "pl").strip().lower()
@@ -2054,6 +2139,11 @@ def translate_epub(
         global_done = global_cached + resume_extra_done
     global_new = 0
     global_ledger_reused = 0
+    global_reused = 0
+    global_changed = 0
+    global_retranslated = 0
+    global_changed_retranslated = 0
+    semantic_findings: List[Dict[str, Any]] = []
 
     print("\n=== POSTĘP GLOBALNY (CAŁY EPUB) ===")
     print(f"  Segmenty łącznie:     {global_total}")
@@ -2116,6 +2206,7 @@ def translate_epub(
             chapter_cache = 0
             chapter_tm = 0
             chapter_ledger = 0
+            chapter_prev_map: Dict[str, str] = {}
             ledger_rows = segment_ledger.load_chapter_states(chapter_path) if segment_ledger else {}
 
             # cache + lista do tłumaczenia
@@ -2141,18 +2232,36 @@ def translate_epub(
                             if val:
                                 ledger_done_inner = val
 
-                tr_cached = cache.get(sid)
-                if tr_cached is not None:
-                    if polish_guard and not looks_like_polish(tr_cached):
+                tr_cached_exact = cache.get_exact(sid)
+                tr_cached_prefix = cache.get_by_prefix(sid) if tr_cached_exact is None else None
+                if tr_cached_exact is not None:
+                    if polish_guard and not looks_like_polish(tr_cached_exact):
                         print(f"  [LANG-GUARD] Ignoruje cache (wyglada na EN): {sid}")
                         segs.append(Segment(idx=i, el=el, seg_id=sid, inner=seg_inner, plain=seg_plain))
                         continue
-                    replace_inner_xml(el, tr_cached)
+                    replace_inner_xml(el, tr_cached_exact)
                     chapter_cache += 1
+                    global_reused += 1
                     if segment_ledger is not None:
                         if ledger_status != "COMPLETED":
                             global_done += 1
-                        segment_ledger.mark_completed(chapter_path, sid, seg_plain, tr_cached, provider="cache", model=model)
+                        segment_ledger.mark_completed(chapter_path, sid, seg_plain, tr_cached_exact, provider="cache", model=model)
+                elif diff_aware and tr_cached_prefix is not None:
+                    global_changed += 1
+                    chapter_prev_map[sid] = tr_cached_prefix
+                    segs.append(Segment(idx=i, el=el, seg_id=sid, inner=seg_inner, plain=seg_plain))
+                elif tr_cached_prefix is not None:
+                    if polish_guard and not looks_like_polish(tr_cached_prefix):
+                        print(f"  [LANG-GUARD] Ignoruje cache-prefix (wyglada na EN): {sid}")
+                        segs.append(Segment(idx=i, el=el, seg_id=sid, inner=seg_inner, plain=seg_plain))
+                        continue
+                    replace_inner_xml(el, tr_cached_prefix)
+                    chapter_cache += 1
+                    global_reused += 1
+                    if segment_ledger is not None:
+                        if ledger_status != "COMPLETED":
+                            global_done += 1
+                        segment_ledger.mark_completed(chapter_path, sid, seg_plain, tr_cached_prefix, provider="cache", model=model)
                 elif ledger_done_inner is not None:
                     if polish_guard and not looks_like_polish(ledger_done_inner):
                         segs.append(Segment(idx=i, el=el, seg_id=sid, inner=seg_inner, plain=seg_plain))
@@ -2162,6 +2271,7 @@ def translate_epub(
                     cache.append(sid, ledger_done_inner)
                     chapter_ledger += 1
                     global_ledger_reused += 1
+                    global_reused += 1
                     if tm is not None:
                         tm.add(seg_plain, ledger_done_inner, score=1.0, source_lang=source_lang, target_lang=target_lang)
                     if segment_ledger is not None:
@@ -2184,6 +2294,7 @@ def translate_epub(
                             replace_inner_xml(el, tm_hit)
                             chapter_tm += 1
                             global_done += 1
+                            global_reused += 1
                             if segment_ledger is not None:
                                 segment_ledger.mark_completed(chapter_path, sid, seg_plain, tm_hit, provider="tm", model=model)
                     else:
@@ -2295,8 +2406,28 @@ def translate_epub(
                         tm.add(s.plain, tr_inner, score=1.0, source_lang=source_lang, target_lang=target_lang)
                     global_new += 1
                     global_done += 1
+                    global_retranslated += 1
                     chapter_new_done += 1
                     changed = True
+                    prev_text = chapter_prev_map.get(s.seg_id)
+                    if semantic_gate_enabled and prev_text is not None:
+                        global_changed_retranslated += 1
+                        if max(len(prev_text.strip()), len(tr_inner.strip())) >= max(1, int(semantic_gate_min_chars)):
+                            sem_score = semantic_similarity_score(prev_text, tr_inner)
+                            if sem_score < float(semantic_gate_threshold):
+                                severity = "error" if sem_score < float(semantic_gate_hard_threshold) else "warn"
+                                semantic_findings.append(
+                                    {
+                                        "chapter_path": chapter_path,
+                                        "segment_index": int(s.idx),
+                                        "segment_id": s.seg_id,
+                                        "severity": severity,
+                                        "message": (
+                                            f"Semantic drift score={sem_score:.3f} "
+                                            f"(threshold={float(semantic_gate_threshold):.3f}, hard={float(semantic_gate_hard_threshold):.3f})"
+                                        ),
+                                    }
+                                )
 
                 _print_global_progress(
                     chapter_path,
@@ -2347,6 +2478,19 @@ def translate_epub(
     print(entity_msg)
     if not entity_ok:
         print("[ENTITY-WARN] Detected potential entity loss for &shy; or &nbsp;.")
+    semantic_inserted = 0
+    if segment_ledger is not None and semantic_gate_enabled:
+        semantic_inserted = segment_ledger.replace_semantic_diff_findings(semantic_findings)
+        print(
+            "[M6-SEMANTIC] "
+            f"findings_inserted={semantic_inserted} threshold={float(semantic_gate_threshold):.3f} "
+            f"hard={float(semantic_gate_hard_threshold):.3f}"
+        )
+    print(
+        "[M6-DIFF] "
+        f"changed={global_changed} reused={global_reused} "
+        f"retranslated={global_retranslated} changed_retranslated={global_changed_retranslated}"
+    )
 
     print("\n=== KONIEC ===")
     print(f"  Nowe tłumaczenia: {global_new}")
@@ -2416,6 +2560,11 @@ def main() -> int:
     ap.add_argument("--tm-project-id", type=int, default=None, help="ID projektu do powiązania wpisów TM.")
     ap.add_argument("--tm-fuzzy-threshold", type=float, default=0.92, help="Próg fuzzy TM 0..1.")
     ap.add_argument("--run-step", choices=["translate", "edit"], default="translate", help="Krok pipeline do scope ledgera.")
+    ap.add_argument("--no-diff-aware", action="store_true", help="Wylacz diff-aware retranslation dla cache-prefix.")
+    ap.add_argument("--no-semantic-gate", action="store_true", help="Wylacz semantic diff gate i auto-findings QA.")
+    ap.add_argument("--semantic-gate-threshold", type=float, default=0.58, help="Prog semantic diff gate (0..1).")
+    ap.add_argument("--semantic-gate-hard-threshold", type=float, default=0.42, help="Prog hard severity semantic gate (0..1).")
+    ap.add_argument("--semantic-gate-min-chars", type=int, default=24, help="Min znakow do oceny semantic diff.")
 
     args = ap.parse_args()
     tags = tuple([t.strip() for t in args.tags.split(",") if t.strip()])
@@ -2516,6 +2665,11 @@ def main() -> int:
             tm=tm_store,
             segment_ledger=segment_ledger,
             tm_fuzzy_threshold=max(0.0, min(1.0, float(args.tm_fuzzy_threshold))),
+            diff_aware=not bool(args.no_diff_aware),
+            semantic_gate_enabled=not bool(args.no_semantic_gate),
+            semantic_gate_threshold=max(0.0, min(1.0, float(args.semantic_gate_threshold))),
+            semantic_gate_hard_threshold=max(0.0, min(1.0, float(args.semantic_gate_hard_threshold))),
+            semantic_gate_min_chars=max(1, int(args.semantic_gate_min_chars)),
         )
     finally:
         if segment_ledger is not None:

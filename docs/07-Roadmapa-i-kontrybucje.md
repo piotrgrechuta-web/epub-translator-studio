@@ -8,7 +8,7 @@
 - `M7`: uruchomiony szkielet techniczny (seria + slownik serii + auto-detekcja + merge glosariusza).
 - `M4`: domkniete (ledger orchestration upfront + twardy gate EPUBCheck + tokenized inline editor + dashboard ledger metrics + stale widoczny pasek ledgera + presety promptow Gemini w GUI + telemetry retry/timeout + export metryk do release notes + alert progowy ledgera).
 - `M5`: domkniete (nested-inline chips w edytorze + dodatkowe testy regresji + walidator integralnosci `&shy;/&nbsp;` z raportem po runie).
-- `M6`: plan zatwierdzony, kolejne incrementy po M5.
+- `M6`: domkniete (diff-aware retranslation + semantic diff gate + raport changed/reused/retranslated + auto-findings QA).
 
 ## 7.1. Priorytety techniczne
 
@@ -77,8 +77,7 @@ Jesli projekt oszczedza czas:
 ## 7.8. Kolejne milestone'y (po M1-M2, M3 zamrozone)
 
 1. `M4: Memory-First Translation Engine`
-2. `M6: Smart Retranslation + Semantic Diff QA`
-3. `M7: Series Style Memory + Batch Library` (foundation active, kolejne incrementy w backlogu)
+2. `M7: Series Style Memory + Batch Library` (foundation active, kolejne incrementy w backlogu)
 
 Zakres i kryteria `Done` sa utrzymywane w:
 - `docs/09-Backlog-do-uzgodnienia.md`

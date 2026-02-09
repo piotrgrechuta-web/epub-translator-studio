@@ -6,7 +6,7 @@ Status:
 - `M3 zamrozone`: blokada po stronie GitHub Wiki backend (Issue 7 odlozone),
 - `M4 domkniete`: memory-first translation (cache + decision memory + adaptive prompting), z domknietymi metrykami ledgera/retry/timeout i eksportem release notes,
 - `M5 zrealizowane`: EPUB-aware segmentacja i integralnosc markup (`&shy;`, inline tags),
-- `M6 plan zatwierdzony`: diff-aware retranslation + semantic diff gate do recenzji,
+- `M6 zrealizowane`: diff-aware retranslation + semantic diff gate do recenzji,
 - `M7 w realizacji`: wdrozony szkielet serii (project->series, baza serii, manager terminow, merge glosariusza).
 
 ## Cel
@@ -194,7 +194,7 @@ Status: `zrealizowane`:
 
 ## M6: Smart Retranslation + Semantic Diff QA
 
-Status M6: `plan`.
+Status M6: `zrealizowane`.
 
 ### Issue #29: Diff-aware retranslation po zmianie zrodla
 - Zakres:
@@ -205,6 +205,10 @@ Status M6: `plan`.
   - raport `changed/reused/retranslated`,
   - brak potrzeby pelnej retranslacji po drobnych poprawkach,
   - skrocony czas runu dla malych zmian.
+Status: `zrealizowane`:
+1. cache-prefix traktowany jest jako sygnal zmiany segmentu (diff-aware),
+2. zmienione segmenty sa retranslowane zamiast slepego reuse,
+3. runtime emituje raport `[M6-DIFF] changed/reused/retranslated`.
 
 ### Issue #30: Semantic diff gate (embedding) dla recenzji
 - Zakres:
@@ -215,6 +219,10 @@ Status M6: `plan`.
   - segmenty o niskiej roznicy semantycznej moga byc auto-accepted,
   - segmenty o wysokiej roznicy trafiaja na liste recenzji,
   - raport QA pokazuje progi i decyzje bramki semantycznej.
+Status: `zrealizowane`:
+1. semantic gate porownuje poprzednia i nowa wersje tlumaczenia (score 0..1),
+2. segmenty ponizej progu trafiaja automatycznie do `qa_findings` jako `SEMANTIC_DIFF`,
+3. raport runtime pokazuje liczbe findings i aktywne progi.
 
 ## M7: Series Style Memory + Batch Library
 
@@ -258,9 +266,8 @@ Status:
 
 1. `M4` utrzymanie i stabilizacja po wdrozeniu.
 2. Domkniecie `M7 / Issue 31` (style rules + lorebook + versioning).
-3. `M6` (diff-aware + semantic diff gate).
-4. `M7 / Issue 32` (skalowanie batch + opcjonalny fine-tuning).
-5. `M3 / Issue 7` (Wiki backend + Home + sidebar) dopiero po odmrozeniu.
+3. `M7 / Issue 32` (skalowanie batch + opcjonalny fine-tuning).
+4. `M3 / Issue 7` (Wiki backend + Home + sidebar) dopiero po odmrozeniu.
 
 ## Definicja publikacji milestone
 
