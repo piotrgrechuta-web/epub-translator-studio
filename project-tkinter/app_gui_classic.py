@@ -66,6 +66,7 @@ PROMPT_PRESETS_FILE = Path(__file__).resolve().with_name("prompt_presets.json")
 GOOGLE_KEYRING_SERVICE = "epub-translator-studio"
 GOOGLE_KEYRING_USER = "google_api_key"
 EPUBCHECK_TIMEOUT_S = 120
+APP_RUNTIME_VERSION = "0.4.4"
 GLOBAL_PROGRESS_RE = re.compile(r"GLOBAL\s+(\d+)\s*/\s*(\d+)\s*\(([^)]*)\)\s*\|\s*(.*)")
 TOTAL_SEGMENTS_RE = re.compile(r"Segmenty\s+(?:Äąâ€šĂ„â€¦cznie|lacznie)\s*:\s*(\d+)", re.IGNORECASE)
 CACHE_SEGMENTS_RE = re.compile(r"Segmenty\s+z\s+cache\s*:\s*(\d+)", re.IGNORECASE)
@@ -175,10 +176,29 @@ class TranslatorGUI:
         self.workdir = Path(__file__).resolve().parent
         self.events_log_path = self.workdir / "events" / "app_events.jsonl"
         self.translator_path = self._find_translator()
-        self.db = ProjectDB(SQLITE_FILE, recover_runtime_state=True)
+        self.db = ProjectDB(
+            SQLITE_FILE,
+            recover_runtime_state=True,
+            backup_paths=[SERIES_DATA_DIR],
+        )
+        self._startup_notices: List[str] = []
+        if self.db.last_migration_summary:
+            m = self.db.last_migration_summary
+            self._startup_notices.append(
+                "Wykryto zmiane struktury danych. "
+                f"Przeprowadzono konwersje schema {m.get('from_schema')} -> {m.get('to_schema')}. "
+                f"Backup: {m.get('backup_dir')}"
+            )
         self.series_store = SeriesStore(SERIES_DATA_DIR)
         ui_lang = str(self.db.get_setting("ui_language", "pl") or "pl").strip().lower()
         self.i18n = I18NManager(LOCALES_DIR, ui_lang)
+        prev_runtime_version = str(self.db.get_setting("app_runtime_version", "") or "").strip()
+        if prev_runtime_version and prev_runtime_version != APP_RUNTIME_VERSION:
+            self._startup_notices.append(
+                f"Uzywales wersji {prev_runtime_version}, teraz uruchomiona jest {APP_RUNTIME_VERSION}. "
+                "Sprawdz notatki aktualizacji i log konwersji danych."
+            )
+        self.db.set_setting("app_runtime_version", APP_RUNTIME_VERSION)
         mode_raw = str(self.db.get_setting("tooltip_mode", "hybrid") or "hybrid").strip().lower()
         if mode_raw not in {"short", "expert", "hybrid"}:
             mode_raw = "hybrid"
@@ -237,6 +257,7 @@ class TranslatorGUI:
         self._update_command_preview()
         self._refresh_ledger_status()
         self._poll_log_queue()
+        self._show_startup_notices()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _setup_theme(self) -> None:
@@ -572,6 +593,15 @@ class TranslatorGUI:
     def _clear_inline_notice(self) -> None:
         self.inline_notice_var.set("")
         self._inline_notice_after_id = None
+
+    def _show_startup_notices(self) -> None:
+        if not self._startup_notices:
+            return
+        msg = " | ".join([str(x).strip() for x in self._startup_notices if str(x).strip()])
+        if not msg:
+            return
+        self._append_log("[UPDATE] " + msg + "\n")
+        self._set_inline_notice(msg, level="warn", timeout_ms=18000)
 
     def tr(self, key: str, default: str, **fmt: Any) -> str:
         return self.i18n.t(key, default, **fmt)
@@ -3716,7 +3746,19 @@ class TranslatorGUI:
 
 def main() -> int:
     root = tk.Tk()
-    TranslatorGUI(root)
+    try:
+        TranslatorGUI(root)
+    except Exception as e:
+        try:
+            messagebox.showerror(
+                "Migration Error",
+                "Nie udalo sie uruchomic aplikacji po aktualizacji.\n\n"
+                f"Szczegoly:\n{e}\n\n"
+                "Sprawdz folder backupow migracji i sproboj ponownie.",
+            )
+        finally:
+            root.destroy()
+        return 2
     root.mainloop()
     return 0
 

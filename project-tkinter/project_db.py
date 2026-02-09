@@ -12,6 +12,7 @@ import sqlite3
 import shutil
 import time
 import unicodedata
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -79,10 +80,18 @@ def _release_init_lock(fh) -> None:
 
 
 class ProjectDB:
-    def __init__(self, path: Path, *, recover_runtime_state: bool = False) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        recover_runtime_state: bool = False,
+        backup_paths: Optional[List[Path]] = None,
+    ) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._db_preexists = self.path.exists()
+        self._backup_paths = [Path(p) for p in (backup_paths or [])]
+        self.last_migration_summary: Optional[Dict[str, Any]] = None
         self.conn = sqlite3.connect(str(self.path), timeout=30.0)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode = WAL")
@@ -91,7 +100,15 @@ class ProjectDB:
         lock_fh = _acquire_init_lock(self.path.with_suffix(self.path.suffix + ".init.lock"))
         try:
             self._init_schema()
-            self._run_migrations()
+            current_schema = self._schema_version()
+            if current_schema < SCHEMA_VERSION:
+                self.last_migration_summary = self._run_migrations_managed(
+                    current_schema,
+                    SCHEMA_VERSION,
+                    backup_paths=self._backup_paths,
+                )
+            else:
+                self._run_migrations()
             self._ensure_default_profiles()
             if recover_runtime_state:
                 self.recover_interrupted_runtime_state()
@@ -249,6 +266,7 @@ class ProjectDB:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tm_src_len ON tm_segments(LENGTH(source_text))")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_runs_project_started ON runs(project_id, started_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_series_name ON series(name)")
+        self._ensure_migration_tracking_table(cur)
         project_cols = {str(r["name"]) for r in self.conn.execute("PRAGMA table_info(projects)").fetchall()}
         if "series_id" in project_cols:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_projects_series ON projects(series_id, updated_at DESC)")
@@ -257,6 +275,178 @@ class ProjectDB:
         if version is None:
             self._meta_set("schema_version", "1")
         self.conn.commit()
+
+    def _ensure_migration_tracking_table(self, cur: sqlite3.Cursor) -> None:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS migration_runs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              from_schema INTEGER NOT NULL,
+              to_schema INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'running',
+              backup_dir TEXT NOT NULL DEFAULT '',
+              error_message TEXT NOT NULL DEFAULT '',
+              rollback_applied INTEGER NOT NULL DEFAULT 0,
+              started_at INTEGER NOT NULL,
+              finished_at INTEGER
+            )
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_migration_runs_started ON migration_runs(started_at DESC)")
+
+    def _start_migration_run(self, from_schema: int, to_schema: int, backup_dir: Path) -> int:
+        now = _now_ts()
+        cur = self.conn.execute(
+            """
+            INSERT INTO migration_runs(from_schema, to_schema, status, backup_dir, started_at)
+            VALUES(?, ?, 'running', ?, ?)
+            """,
+            (int(from_schema), int(to_schema), str(backup_dir), now),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def _finish_migration_run(
+        self,
+        run_id: int,
+        *,
+        status: str,
+        error_message: str = "",
+        rollback_applied: bool = False,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE migration_runs
+            SET status = ?,
+                error_message = ?,
+                rollback_applied = ?,
+                finished_at = ?
+            WHERE id = ?
+            """,
+            (str(status), str(error_message), 1 if rollback_applied else 0, _now_ts(), int(run_id)),
+        )
+        self.conn.commit()
+
+    def _create_migration_backup(
+        self,
+        from_schema: int,
+        to_schema: int,
+        *,
+        backup_paths: List[Path],
+    ) -> Dict[str, Any]:
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        backup_dir = self.path.parent / "migration_backups" / f"schema_{from_schema}_to_{to_schema}_{ts}"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        db_backup = backup_dir / self.path.name
+        bconn = sqlite3.connect(str(db_backup))
+        try:
+            self.conn.backup(bconn)
+        finally:
+            bconn.close()
+
+        wal_backup = backup_dir / f"{self.path.name}-wal"
+        shm_backup = backup_dir / f"{self.path.name}-shm"
+        src_wal = self.path.with_name(self.path.name + "-wal")
+        src_shm = self.path.with_name(self.path.name + "-shm")
+        if src_wal.exists():
+            shutil.copy2(src_wal, wal_backup)
+        if src_shm.exists():
+            shutil.copy2(src_shm, shm_backup)
+
+        extra_archives: List[Dict[str, str]] = []
+        for idx, raw in enumerate(backup_paths):
+            p = Path(raw)
+            if not p.exists():
+                continue
+            zip_name = backup_dir / f"extra_{idx:02d}_{p.name}"
+            zip_path = shutil.make_archive(str(zip_name), "zip", root_dir=str(p.parent), base_dir=p.name)
+            extra_archives.append({"source": str(p), "zip": str(zip_path)})
+
+        return {
+            "backup_dir": str(backup_dir),
+            "db_backup": str(db_backup),
+            "wal_backup": str(wal_backup),
+            "shm_backup": str(shm_backup),
+            "extra_archives": extra_archives,
+        }
+
+    def _restore_migration_backup(self, backup: Dict[str, Any]) -> bool:
+        backup_db = Path(str(backup.get("db_backup", "")).strip())
+        if not backup_db.exists():
+            return False
+
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+
+        shutil.copy2(backup_db, self.path)
+
+        db_wal = self.path.with_name(self.path.name + "-wal")
+        db_shm = self.path.with_name(self.path.name + "-shm")
+        wal_backup = Path(str(backup.get("wal_backup", "")).strip())
+        shm_backup = Path(str(backup.get("shm_backup", "")).strip())
+        if wal_backup.exists():
+            shutil.copy2(wal_backup, db_wal)
+        elif db_wal.exists():
+            db_wal.unlink()
+        if shm_backup.exists():
+            shutil.copy2(shm_backup, db_shm)
+        elif db_shm.exists():
+            db_shm.unlink()
+
+        for item in backup.get("extra_archives", []) or []:
+            source = Path(str(item.get("source", "")).strip())
+            zip_path = Path(str(item.get("zip", "")).strip())
+            if not zip_path.exists():
+                continue
+            if source.exists():
+                if source.is_dir():
+                    shutil.rmtree(source)
+                else:
+                    source.unlink()
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(str(source.parent))
+        return True
+
+    def _run_migrations_managed(
+        self,
+        from_schema: int,
+        to_schema: int,
+        *,
+        backup_paths: List[Path],
+    ) -> Dict[str, Any]:
+        backup = self._create_migration_backup(from_schema, to_schema, backup_paths=backup_paths)
+        backup_dir = Path(str(backup["backup_dir"]))
+        run_id = self._start_migration_run(from_schema, to_schema, backup_dir)
+        try:
+            self._run_migrations()
+            summary = {
+                "from_schema": int(from_schema),
+                "to_schema": int(self._schema_version()),
+                "backup_dir": str(backup_dir),
+                "status": "ok",
+                "migration_run_id": int(run_id),
+            }
+            self._finish_migration_run(run_id, status="ok")
+            return summary
+        except Exception as e:
+            err = f"{type(e).__name__}: {e}"
+            try:
+                self._finish_migration_run(run_id, status="error", error_message=err, rollback_applied=False)
+            except Exception:
+                pass
+            rollback_ok = False
+            try:
+                rollback_ok = self._restore_migration_backup(backup)
+            except Exception:
+                rollback_ok = False
+            raise RuntimeError(
+                f"Schema migration failed ({from_schema} -> {to_schema}). "
+                f"Backup: {backup_dir}. Rollback: {'ok' if rollback_ok else 'failed'}. "
+                f"Original error: {err}"
+            ) from e
 
     def _schema_version(self) -> int:
         raw = self._meta_get("schema_version")
