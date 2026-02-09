@@ -17,6 +17,7 @@ KEYWORDS: `EPUB translator`, `EPUB translator desktop app`, `EPUB translation to
 - security-first runtime gates (EPUBCheck hard gate + QA severity gate)
 - Smart Context window for neighboring segments (better pronouns/gender consistency)
 - async provider preflight (Ollama + Google) with telemetry (`status/latency/model count`) and non-blocking UI checks
+- optional async batch dispatch (`--io-concurrency`) with bounded parallelism and ledger-safe resume
 - Series Memory engine: per-series terms, style rules, lorebook, change history, series profile import/export
 - one-click series batch orchestration with aggregated series report (`series_batch_report_*.json/.md`)
 

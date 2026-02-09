@@ -46,6 +46,10 @@ All notable changes to this project are documented in this file.
   - provider preflight telemetry in runtime core (`project-tkinter/runtime_core.py`),
   - GUI button `Health check I/O` in model card (`project-tkinter/app_gui_classic.py`, Horizon via inheritance),
   - async multi-plugin health checks in Studio Tools (`Health check all (async)`).
+- Optional async translation batch dispatch:
+  - new CLI/runtime option `--io-concurrency` for bounded parallel batch I/O,
+  - provider-aware semaphore + paced dispatch interval (rate-limit-aware),
+  - ledger idempotency preserved (`PROCESSING/COMPLETED/ERROR`) under concurrent dispatch.
 - Tests for async health checks:
   - `project-tkinter/tests/test_async_health_checks.py`.
 

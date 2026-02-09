@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 import time
 import zipfile
@@ -17,7 +18,10 @@ from project_db import ProjectDB  # noqa: E402
 from text_preserve import set_text_preserving_inline, tokenize_inline_markup, apply_tokenized_inline_markup  # noqa: E402
 from translation_engine import (  # noqa: E402
     SegmentLedger,
+    TranslationMemory,
+    build_batch_payload,
     seed_segment_ledger_from_epub,
+    translate_epub,
     validate_entity_integrity,
     semantic_similarity_score,
     load_language_guard_profiles,
@@ -58,6 +62,89 @@ def _make_epub(tmp_path: Path) -> Path:
         zf.writestr("OPS/content.opf", opf)
         zf.writestr("OPS/Text/ch1.xhtml", xhtml)
     return epub_path
+
+
+def test_async_io_dispatch_keeps_ledger_idempotent(tmp_path: Path) -> None:
+    class FakeBatchLLM:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def resolve_model(self) -> str:
+            return "fake-model"
+
+        def generate(self, prompt: str, model: str) -> str:
+            _ = model
+            self.calls += 1
+            chunks = re.findall(r"(<batch\b[\s\S]*?</batch>)", prompt, flags=re.IGNORECASE)
+            assert chunks
+            parser = etree.XMLParser(recover=True, huge_tree=True)
+            root = etree.fromstring(chunks[-1].encode("utf-8"), parser=parser)
+            seg_items = []
+            for seg in root.findall(".//{*}seg"):
+                sid = str(seg.get("id") or "").strip()
+                assert sid
+                seg_items.append((sid, f"PL::{sid}"))
+            return build_batch_payload(seg_items)
+
+    input_epub = _make_epub(tmp_path)
+    output_epub = tmp_path / "out.epub"
+    cache_path = tmp_path / "cache.jsonl"
+    db_path = tmp_path / "tm_ledger.db"
+    tm = None
+    ledger = None
+    llm = FakeBatchLLM()
+    try:
+        tm = TranslationMemory(db_path, project_id=19)
+        ledger = SegmentLedger(db_path, project_id=19, run_step="translate")
+        translate_epub(
+            input_epub=input_epub,
+            output_epub=output_epub,
+            base_prompt="Translate faithfully.",
+            llm=llm,
+            provider="google",
+            cache_path=cache_path,
+            block_tags=("p",),
+            batch_max_chars=200,
+            batch_max_segs=1,
+            sleep_s=0.01,
+            polish_guard=False,
+            tm=tm,
+            segment_ledger=ledger,
+            semantic_gate_enabled=False,
+            io_concurrency=2,
+        )
+        first_calls = llm.calls
+        assert first_calls >= 1
+        states = ledger.load_scope_states()
+        assert len(states) == 2
+        assert all(str(r["status"]) == "COMPLETED" for r in states.values())
+
+        translate_epub(
+            input_epub=input_epub,
+            output_epub=output_epub,
+            base_prompt="Translate faithfully.",
+            llm=llm,
+            provider="google",
+            cache_path=cache_path,
+            block_tags=("p",),
+            batch_max_chars=200,
+            batch_max_segs=1,
+            sleep_s=0.01,
+            polish_guard=False,
+            tm=tm,
+            segment_ledger=ledger,
+            semantic_gate_enabled=False,
+            io_concurrency=2,
+        )
+        assert llm.calls == first_calls
+        states2 = ledger.load_scope_states()
+        assert len(states2) == 2
+        assert all(str(r["status"]) == "COMPLETED" for r in states2.values())
+    finally:
+        if ledger is not None:
+            ledger.close()
+        if tm is not None:
+            tm.close()
 
 
 def test_segment_ledger_lifecycle_and_stale_reset(tmp_path: Path) -> None:
@@ -284,6 +371,7 @@ def test_build_run_command_includes_run_step() -> None:
         source_lang="en",
         target_lang="pl",
         run_step="edit",
+        io_concurrency="3",
         context_window="5",
         context_neighbor_max_chars="200",
         context_segment_max_chars="1500",
@@ -297,6 +385,8 @@ def test_build_run_command_includes_run_step() -> None:
     assert cmd[cmd.index("--context-window") + 1] == "5"
     assert "--context-neighbor-max-chars" in cmd
     assert "--context-segment-max-chars" in cmd
+    assert "--io-concurrency" in cmd
+    assert cmd[cmd.index("--io-concurrency") + 1] == "3"
 
 
 def test_build_context_hints_uses_neighbor_window() -> None:

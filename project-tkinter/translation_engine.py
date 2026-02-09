@@ -16,6 +16,7 @@ ZaleĹĽnoĹ›ci:
 
 from __future__ import annotations
 
+import asyncio
 import argparse
 import datetime
 import hashlib
@@ -26,13 +27,14 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 import time
 import zipfile
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from html.entities import name2codepoint
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Protocol
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Protocol
 
 import requests
 from requests.exceptions import ReadTimeout, ConnectionError as ReqConnectionError, HTTPError
@@ -308,6 +310,7 @@ class GoogleClient:
             "x-goog-api-key": cfg.api_key.strip(),
         })
         self.base_url = "https://generativelanguage.googleapis.com"
+        self._throttle_lock = threading.Lock()
         self._next_allowed_ts = 0.0
         self._extra_throttle = 0.0
 
@@ -353,27 +356,32 @@ class GoogleClient:
 
     def _sleep_until_allowed(self) -> None:
         base = float(getattr(self.cfg, "min_interval_s", 0.0) or 0.0)
-        now = time.time()
-        wait = self._next_allowed_ts - now
+        with self._throttle_lock:
+            now = time.time()
+            wait = self._next_allowed_ts - now
+            extra = self._extra_throttle
         if wait > 0:
             time.sleep(wait)
         # dodatkowe throttling reagujÄ…ce na bĹ‚Ä™dy
-        if self._extra_throttle > 0:
-            time.sleep(self._extra_throttle)
+        if extra > 0:
+            time.sleep(extra)
 
     def _after_request(self) -> None:
         base = float(getattr(self.cfg, "min_interval_s", 0.0) or 0.0)
-        self._next_allowed_ts = time.time() + base
+        with self._throttle_lock:
+            self._next_allowed_ts = time.time() + base
 
     def _bump_throttle(self) -> None:
         # roĹ›nie do max_extra_throttle_s, skok throttle_step_s
         step = float(self.cfg.throttle_step_s or 0.5)
         max_t = float(self.cfg.max_extra_throttle_s or 10.0)
-        self._extra_throttle = min(max_t, self._extra_throttle + step)
+        with self._throttle_lock:
+            self._extra_throttle = min(max_t, self._extra_throttle + step)
 
     def _decay_throttle(self) -> None:
         # po sukcesie zmniejszamy throttling
-        self._extra_throttle = max(0.0, self._extra_throttle - (self.cfg.throttle_step_s or 0.5))
+        with self._throttle_lock:
+            self._extra_throttle = max(0.0, self._extra_throttle - (self.cfg.throttle_step_s or 0.5))
 
     def generate(self, prompt: str, model: str) -> str:
         url = self.base_url + f"/v1beta/{self._norm_model(model)}:generateContent"
@@ -948,6 +956,73 @@ def chunk_segments(segments: List[Segment], batch_max_chars: int, batch_max_segs
             size = 0
     if batch:
         yield batch
+
+
+@dataclass
+class BatchDispatchResult:
+    batch_no: int
+    batch: List[Segment]
+    debug_prefix: str
+    mapping: Dict[str, str]
+    error: Optional[Exception] = None
+
+
+async def dispatch_translation_batches_async(
+    *,
+    jobs: List[Tuple[int, List[Segment], str]],
+    translate_fn: Callable[[List[Segment], str], Dict[str, str]],
+    io_concurrency: int,
+    dispatch_interval_s: float = 0.0,
+) -> List[BatchDispatchResult]:
+    """Dispatch batches concurrently with bounded parallelism and paced starts."""
+    if not jobs:
+        return []
+
+    sem = asyncio.Semaphore(max(1, int(io_concurrency)))
+    pace_lock = asyncio.Lock()
+    next_allowed_monotonic = 0.0
+    base_interval = max(0.0, float(dispatch_interval_s or 0.0))
+
+    async def _run_one(batch_no: int, batch: List[Segment], debug_prefix: str) -> BatchDispatchResult:
+        nonlocal next_allowed_monotonic
+        async with sem:
+            wait_s = 0.0
+            if base_interval > 0:
+                async with pace_lock:
+                    now = time.monotonic()
+                    if now < next_allowed_monotonic:
+                        wait_s = next_allowed_monotonic - now
+                        next_allowed_monotonic += base_interval
+                    else:
+                        next_allowed_monotonic = now + base_interval
+                if wait_s > 0:
+                    await asyncio.sleep(wait_s)
+            try:
+                mapping = await asyncio.to_thread(translate_fn, batch, debug_prefix)
+                return BatchDispatchResult(
+                    batch_no=batch_no,
+                    batch=batch,
+                    debug_prefix=debug_prefix,
+                    mapping=mapping,
+                    error=None,
+                )
+            except Exception as e:
+                return BatchDispatchResult(
+                    batch_no=batch_no,
+                    batch=batch,
+                    debug_prefix=debug_prefix,
+                    mapping={},
+                    error=e,
+                )
+
+    tasks = [
+        asyncio.create_task(_run_one(batch_no, batch, debug_prefix))
+        for batch_no, batch, debug_prefix in jobs
+    ]
+    out: List[BatchDispatchResult] = []
+    for fut in asyncio.as_completed(tasks):
+        out.append(await fut)
+    return out
 
 
 # ----------------------------
@@ -2241,6 +2316,7 @@ def translate_epub(
     semantic_gate_threshold: float = 0.58,
     semantic_gate_hard_threshold: float = 0.42,
     semantic_gate_min_chars: int = 24,
+    io_concurrency: int = 1,
 ) -> None:
     source_lang = (source_lang or "en").strip().lower()
     target_lang = (target_lang or "pl").strip().lower()
@@ -2251,10 +2327,17 @@ def translate_epub(
     ctx_window = max(0, int(context_window))
     ctx_neighbor_max = max(24, int(context_neighbor_max_chars))
     ctx_per_seg_max = max(80, int(context_per_segment_max_chars))
+    effective_io_concurrency = max(1, int(io_concurrency or 1))
     if ctx_window > 0:
         print(
             "[SMART-CONTEXT] "
             f"window={ctx_window} neighbor_max={ctx_neighbor_max} per_seg_max={ctx_per_seg_max}"
+        )
+    if effective_io_concurrency > 1:
+        print(
+            "[ASYNC-DISPATCH] "
+            f"provider={provider} io_concurrency={effective_io_concurrency} "
+            f"dispatch_interval={max(0.0, float(sleep_s or 0.0)):g}s"
         )
     base_prompt = base_prompt.strip() + "\n\n" + build_language_instruction(source_lang, target_lang)
     model = llm.resolve_model()
@@ -2503,6 +2586,115 @@ def translate_epub(
             changed = False
             chapter_new_done = 0
 
+            def _translate_batch_call(batch_local: List[Segment], debug_prefix_local: str) -> Dict[str, str]:
+                if provider == "google":
+                    return translate_batch_with_google_strategy(
+                        llm=llm,
+                        model=model,
+                        base_prompt=base_prompt,
+                        batch=batch_local,
+                        glossary_index=glossary_index,
+                        debug_dir=debug_dir,
+                        debug_prefix=debug_prefix_local,
+                        sleep_s=sleep_s,
+                    )
+                return translate_batch_with_ollama_strategy(
+                    llm=llm,
+                    model=model,
+                    base_prompt=base_prompt,
+                    batch=batch_local,
+                    glossary_index=glossary_index,
+                    debug_dir=debug_dir,
+                    debug_prefix=debug_prefix_local,
+                    sleep_s=sleep_s,
+                )
+
+            def _apply_batch_mapping(
+                batch_no_local: int,
+                batch_local: List[Segment],
+                debug_prefix_local: str,
+                mapping_local: Dict[str, str],
+            ) -> None:
+                nonlocal changed, chapter_new_done
+                nonlocal global_new, global_done, global_retranslated, global_changed_retranslated
+                for seg_local in batch_local:
+                    tr_inner = (mapping_local.get(seg_local.seg_id) or "").strip()
+                    if not tr_inner:
+                        raise RuntimeError(
+                            f"Pusty wynik tĹ‚umaczenia po fallbacku dla segmentu: {seg_local.seg_id}"
+                        )
+                    if polish_guard:
+                        tr_inner = ensure_target_language_translation(
+                            llm=llm,
+                            model=model,
+                            base_prompt=base_prompt,
+                            seg=seg_local,
+                            translated_inner=tr_inner,
+                            target_lang=target_lang,
+                            guard_profiles=guard_profiles,
+                            glossary_index=glossary_index,
+                            debug_dir=debug_dir,
+                            debug_prefix=debug_prefix_local,
+                        )
+                    if segment_ledger is not None:
+                        segment_ledger.mark_completed(
+                            chapter_path,
+                            seg_local.seg_id,
+                            seg_local.plain,
+                            tr_inner,
+                            provider=provider,
+                            model=model,
+                        )
+                    replace_inner_xml(seg_local.el, tr_inner)
+                    cache[seg_local.seg_id] = tr_inner
+                    cache.append(seg_local.seg_id, tr_inner)
+                    if tm is not None:
+                        tm.add(
+                            seg_local.plain,
+                            tr_inner,
+                            score=1.0,
+                            source_lang=source_lang,
+                            target_lang=target_lang,
+                        )
+                    global_new += 1
+                    global_done += 1
+                    global_retranslated += 1
+                    chapter_new_done += 1
+                    changed = True
+                    prev_text = chapter_prev_map.get(seg_local.seg_id)
+                    if semantic_gate_enabled and prev_text is not None:
+                        global_changed_retranslated += 1
+                        if max(len(prev_text.strip()), len(tr_inner.strip())) >= max(
+                            1, int(semantic_gate_min_chars)
+                        ):
+                            sem_score = semantic_similarity_score(prev_text, tr_inner)
+                            if sem_score < float(semantic_gate_threshold):
+                                severity = (
+                                    "error"
+                                    if sem_score < float(semantic_gate_hard_threshold)
+                                    else "warn"
+                                )
+                                semantic_findings.append(
+                                    {
+                                        "chapter_path": chapter_path,
+                                        "segment_index": int(seg_local.idx),
+                                        "segment_id": seg_local.seg_id,
+                                        "severity": severity,
+                                        "message": (
+                                            f"Semantic drift score={sem_score:.3f} "
+                                            f"(threshold={float(semantic_gate_threshold):.3f}, hard={float(semantic_gate_hard_threshold):.3f})"
+                                        ),
+                                    }
+                                )
+                _print_global_progress(
+                    chapter_path,
+                    extra=(
+                        f"spine {spine_idx}/{spine_total} | batch {batch_no_local} | "
+                        f"nowe w pliku: {chapter_new_done}/{chapter_new_total}"
+                    ),
+                )
+
+            batch_jobs: List[Tuple[int, List[Segment], str]] = []
             for batch_no, batch in enumerate(chunk_segments(segs, batch_max_chars, batch_max_segs), 1):
                 debug_prefix = f"{Path(chapter_path).stem}_b{batch_no:04d}"
                 batch_first_idx = batch[0].idx if batch else -1
@@ -2513,7 +2705,6 @@ def translate_epub(
                     f"batch {batch_no} | segs={len(batch)} | idx={batch_first_idx}-{batch_last_idx} | chars~{batch_chars}",
                     flush=True,
                 )
-
                 if segment_ledger is not None:
                     for s in batch:
                         segment_ledger.mark_processing(
@@ -2523,96 +2714,80 @@ def translate_epub(
                             provider=provider,
                             model=model,
                         )
-                try:
-                    if provider == "google":
-                        mapping = translate_batch_with_google_strategy(
-                            llm=llm, model=model, base_prompt=base_prompt,
-                            batch=batch, glossary_index=glossary_index,
-                            debug_dir=debug_dir, debug_prefix=debug_prefix,
-                            sleep_s=sleep_s,
-                        )
-                    else:
-                        mapping = translate_batch_with_ollama_strategy(
-                            llm=llm, model=model, base_prompt=base_prompt,
-                            batch=batch, glossary_index=glossary_index,
-                            debug_dir=debug_dir, debug_prefix=debug_prefix,
-                            sleep_s=sleep_s,
-                        )
-                except Exception as e:
-                    if segment_ledger is not None:
-                        msg = f"{type(e).__name__}: {e}"
-                        for s in batch:
-                            segment_ledger.mark_error(s.seg_id, msg)
-                    raise
+                batch_jobs.append((batch_no, batch, debug_prefix))
+
+            first_error: Optional[Exception] = None
+            if effective_io_concurrency > 1 and len(batch_jobs) > 1:
                 print(
-                    f"  [BATCH-DONE]  spine {spine_idx}/{spine_total} | batch {batch_no} | map={len(mapping)}",
+                    f"  [ASYNC-DISPATCH] chapter batches={len(batch_jobs)} "
+                    f"provider={provider} sem={effective_io_concurrency}",
                     flush=True,
                 )
-
-                # wstrzykniÄ™cie + cache
-                for s in batch:
-                    tr_inner = (mapping.get(s.seg_id) or "").strip()
-                    if not tr_inner:
-                        raise RuntimeError(f"Pusty wynik tĹ‚umaczenia po fallbacku dla segmentu: {s.seg_id}")
-                    if polish_guard:
-                        tr_inner = ensure_target_language_translation(
-                            llm=llm,
-                            model=model,
-                            base_prompt=base_prompt,
-                            seg=s,
-                            translated_inner=tr_inner,
-                            target_lang=target_lang,
-                            guard_profiles=guard_profiles,
-                            glossary_index=glossary_index,
-                            debug_dir=debug_dir,
-                            debug_prefix=debug_prefix,
-                        )
-                    if segment_ledger is not None:
-                        segment_ledger.mark_completed(
-                            chapter_path,
-                            s.seg_id,
-                            s.plain,
-                            tr_inner,
-                            provider=provider,
-                            model=model,
-                        )
-                    replace_inner_xml(s.el, tr_inner)
-                    cache[s.seg_id] = tr_inner
-                    cache.append(s.seg_id, tr_inner)
-                    if tm is not None:
-                        tm.add(s.plain, tr_inner, score=1.0, source_lang=source_lang, target_lang=target_lang)
-                    global_new += 1
-                    global_done += 1
-                    global_retranslated += 1
-                    chapter_new_done += 1
-                    changed = True
-                    prev_text = chapter_prev_map.get(s.seg_id)
-                    if semantic_gate_enabled and prev_text is not None:
-                        global_changed_retranslated += 1
-                        if max(len(prev_text.strip()), len(tr_inner.strip())) >= max(1, int(semantic_gate_min_chars)):
-                            sem_score = semantic_similarity_score(prev_text, tr_inner)
-                            if sem_score < float(semantic_gate_threshold):
-                                severity = "error" if sem_score < float(semantic_gate_hard_threshold) else "warn"
-                                semantic_findings.append(
-                                    {
-                                        "chapter_path": chapter_path,
-                                        "segment_index": int(s.idx),
-                                        "segment_id": s.seg_id,
-                                        "severity": severity,
-                                        "message": (
-                                            f"Semantic drift score={sem_score:.3f} "
-                                            f"(threshold={float(semantic_gate_threshold):.3f}, hard={float(semantic_gate_hard_threshold):.3f})"
-                                        ),
-                                    }
-                                )
-
-                _print_global_progress(
-                    chapter_path,
-                    extra=f"spine {spine_idx}/{spine_total} | batch {batch_no} | nowe w pliku: {chapter_new_done}/{chapter_new_total}"
+                batch_results = asyncio.run(
+                    dispatch_translation_batches_async(
+                        jobs=batch_jobs,
+                        translate_fn=_translate_batch_call,
+                        io_concurrency=effective_io_concurrency,
+                        dispatch_interval_s=max(0.0, float(sleep_s or 0.0)),
+                    )
                 )
-
-                if sleep_s > 0:
-                    time.sleep(sleep_s)
+                for res in sorted(batch_results, key=lambda x: x.batch_no):
+                    if res.error is not None:
+                        if segment_ledger is not None:
+                            msg = f"{type(res.error).__name__}: {res.error}"
+                            for s in res.batch:
+                                segment_ledger.mark_error(s.seg_id, msg)
+                        if first_error is None:
+                            first_error = res.error
+                        print(
+                            f"  [BATCH-FAIL]  spine {spine_idx}/{spine_total} | "
+                            f"batch {res.batch_no} | err={type(res.error).__name__}",
+                            flush=True,
+                        )
+                        continue
+                    print(
+                        f"  [BATCH-DONE]  spine {spine_idx}/{spine_total} | "
+                        f"batch {res.batch_no} | map={len(res.mapping)}",
+                        flush=True,
+                    )
+                    try:
+                        _apply_batch_mapping(
+                            batch_no_local=res.batch_no,
+                            batch_local=res.batch,
+                            debug_prefix_local=res.debug_prefix,
+                            mapping_local=res.mapping,
+                        )
+                    except Exception as e:
+                        if segment_ledger is not None:
+                            msg = f"{type(e).__name__}: {e}"
+                            for s in res.batch:
+                                segment_ledger.mark_error(s.seg_id, msg)
+                        if first_error is None:
+                            first_error = e
+                if first_error is not None:
+                    raise first_error
+            else:
+                for batch_no, batch, debug_prefix in batch_jobs:
+                    try:
+                        mapping = _translate_batch_call(batch, debug_prefix)
+                    except Exception as e:
+                        if segment_ledger is not None:
+                            msg = f"{type(e).__name__}: {e}"
+                            for s in batch:
+                                segment_ledger.mark_error(s.seg_id, msg)
+                        raise
+                    print(
+                        f"  [BATCH-DONE]  spine {spine_idx}/{spine_total} | batch {batch_no} | map={len(mapping)}",
+                        flush=True,
+                    )
+                    _apply_batch_mapping(
+                        batch_no_local=batch_no,
+                        batch_local=batch,
+                        debug_prefix_local=debug_prefix,
+                        mapping_local=mapping,
+                    )
+                    if sleep_s > 0:
+                        time.sleep(sleep_s)
 
             if changed:
                 out_bytes = etree.tostring(root, encoding="utf-8", xml_declaration=True, pretty_print=False)
@@ -2757,6 +2932,12 @@ def main() -> int:
     ap.add_argument("--context-window", type=int, default=0, help="Liczba segmentow kontekstu przed i po kazdym segmencie.")
     ap.add_argument("--context-neighbor-max-chars", type=int, default=180, help="Max znakow na pojedynczy segment kontekstu.")
     ap.add_argument("--context-segment-max-chars", type=int, default=1200, help="Max znakow kontekstu przypisanych do jednego segmentu.")
+    ap.add_argument(
+        "--io-concurrency",
+        type=int,
+        default=1,
+        help="Liczba rownoleglych batchy I/O (1 = tryb sekwencyjny).",
+    )
 
     args = ap.parse_args()
     tags = tuple([t.strip() for t in args.tags.split(",") if t.strip()])
@@ -2868,6 +3049,7 @@ def main() -> int:
             semantic_gate_threshold=max(0.0, min(1.0, float(args.semantic_gate_threshold))),
             semantic_gate_hard_threshold=max(0.0, min(1.0, float(args.semantic_gate_hard_threshold))),
             semantic_gate_min_chars=max(1, int(args.semantic_gate_min_chars)),
+            io_concurrency=max(1, int(args.io_concurrency)),
         )
     finally:
         if segment_ledger is not None:

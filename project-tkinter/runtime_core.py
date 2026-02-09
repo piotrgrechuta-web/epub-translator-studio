@@ -49,6 +49,7 @@ class RunOptions:
     context_window: str = "0"
     context_neighbor_max_chars: str = "180"
     context_segment_max_chars: str = "1200"
+    io_concurrency: str = "1"
 
 
 @dataclass
@@ -296,6 +297,12 @@ def build_run_command(
         cmd += ["--tm-project-id", str(int(opts.tm_project_id))]
     cmd += ["--run-step", (opts.run_step.strip().lower() or "translate")]
     cmd += ["--tm-fuzzy-threshold", tm_fuzzy_threshold]
+    try:
+        io_concurrency = max(1, int(str(opts.io_concurrency or "").strip() or "1"))
+    except Exception:
+        io_concurrency = 1
+    if io_concurrency > 1:
+        cmd += ["--io-concurrency", str(io_concurrency)]
     try:
         ctx_window = max(0, int(str(opts.context_window or "").strip() or "0"))
     except Exception:
