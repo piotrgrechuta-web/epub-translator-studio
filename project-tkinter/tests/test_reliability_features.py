@@ -12,7 +12,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from runtime_core import RunOptions, build_run_command, validate_run_options  # noqa: E402
+from runtime_core import (  # noqa: E402
+    ProviderHealthStatus,
+    RunOptions,
+    build_easy_run_plan,
+    build_run_command,
+    compute_easy_progress,
+    preflight_provider_for_easy_mode,
+    validate_run_options,
+)
 from app_gui_classic import parse_epubcheck_findings  # noqa: E402
 from project_db import ProjectDB  # noqa: E402
 from text_preserve import set_text_preserving_inline, tokenize_inline_markup, apply_tokenized_inline_markup  # noqa: E402
@@ -739,3 +747,183 @@ def test_qa_severity_gate_blocks_open_error_and_fatal(tmp_path: Path) -> None:
         assert ok2 is True
     finally:
         db.close()
+
+
+def _health(
+    provider: str,
+    state: str = "ok",
+    *,
+    latency_ms: int = 12,
+    model_count: int = 1,
+    detail: str = "ok",
+) -> ProviderHealthStatus:
+    return ProviderHealthStatus(
+        provider=provider,
+        state=state,
+        latency_ms=latency_ms,
+        model_count=model_count,
+        detail=detail,
+    )
+
+
+def test_easy_run_plan_mode_selection_and_queue_behavior() -> None:
+    default_plan = build_easy_run_plan("")
+    assert default_plan.mode == "streaming"
+    assert default_plan.steps == ("translate", "edit")
+    assert default_plan.uses_queue is True
+    assert default_plan.non_blocking_translate is True
+    assert default_plan.fifo_editor_queue is True
+
+    stream_plan = build_easy_run_plan("stream")
+    assert stream_plan.mode == "streaming"
+    assert stream_plan.steps == ("translate", "edit")
+    assert stream_plan.non_blocking_translate is True
+    assert stream_plan.fifo_editor_queue is True
+
+    parallel_plan = build_easy_run_plan("parallel-lanes")
+    assert parallel_plan.mode == "parallel"
+    assert parallel_plan.steps == ("translate", "edit")
+    assert parallel_plan.non_blocking_translate is True
+    assert parallel_plan.fifo_editor_queue is True
+
+    translate_plan = build_easy_run_plan("translate")
+    assert translate_plan.mode == "translate-only"
+    assert translate_plan.steps == ("translate",)
+    assert translate_plan.uses_queue is False
+
+    edit_plan = build_easy_run_plan("edit_only")
+    assert edit_plan.mode == "edit-only"
+    assert edit_plan.steps == ("edit",)
+    assert edit_plan.uses_queue is False
+
+
+def test_easy_progress_snapshot_reports_dual_counters() -> None:
+    streaming = compute_easy_progress(
+        "streaming",
+        translate_done=4,
+        translate_total=10,
+        edit_done=2,
+        edit_total=0,
+        phase="translate",
+    )
+    assert streaming.global_total == 20
+    assert streaming.global_done == 6
+    assert round(streaming.global_pct, 1) == 30.0
+    assert streaming.translate_done == 4
+    assert streaming.edit_done == 2
+
+    translate_only = compute_easy_progress(
+        "translate-only",
+        translate_done=3,
+        translate_total=9,
+        edit_done=7,
+        edit_total=9,
+    )
+    assert translate_only.global_total == 9
+    assert translate_only.global_done == 3
+    assert round(translate_only.global_pct, 1) == 33.3
+
+    edit_only = compute_easy_progress(
+        "edit-only",
+        translate_done=9,
+        translate_total=9,
+        edit_done=5,
+        edit_total=8,
+    )
+    assert edit_only.global_total == 8
+    assert edit_only.global_done == 5
+    assert round(edit_only.global_pct, 1) == 62.5
+
+
+def test_easy_provider_preflight_google_and_unsupported() -> None:
+    skip_result = preflight_provider_for_easy_mode(
+        "google",
+        ollama_host="http://127.0.0.1:11434",
+        google_api_key="",
+        google_check_fn=lambda key, timeout: _health("google", "skip", detail=f"missing key ({key},{timeout})"),
+    )
+    assert skip_result.ok is False
+    assert skip_result.provider == "google"
+    assert skip_result.state == "skip"
+    assert "missing" in skip_result.message.lower()
+
+    ok_result = preflight_provider_for_easy_mode(
+        "google",
+        ollama_host="http://127.0.0.1:11434",
+        google_api_key="secret",
+        google_check_fn=lambda key, timeout: _health(
+            "google",
+            "ok",
+            detail=f"key={key} timeout={timeout}",
+            model_count=5,
+            latency_ms=21,
+        ),
+    )
+    assert ok_result.ok is True
+    assert ok_result.state == "ok"
+    assert "5 models" in ok_result.message
+
+    unsupported = preflight_provider_for_easy_mode(
+        "azure-openai",
+        ollama_host="http://127.0.0.1:11434",
+        google_api_key="",
+    )
+    assert unsupported.ok is False
+    assert unsupported.state == "fail"
+    assert "unsupported provider" in unsupported.message.lower()
+
+
+def test_easy_provider_preflight_ollama_autostart_success() -> None:
+    calls = {"check": 0, "start": 0}
+
+    def check_fn(host: str, timeout: int) -> ProviderHealthStatus:
+        calls["check"] += 1
+        _ = host, timeout
+        if calls["check"] == 1:
+            return _health("ollama", "fail", detail="connection refused", model_count=0)
+        return _health("ollama", "ok", detail="ready", model_count=3, latency_ms=34)
+
+    def autostart() -> bool:
+        calls["start"] += 1
+        return True
+
+    result = preflight_provider_for_easy_mode(
+        "ollama",
+        ollama_host="http://127.0.0.1:11434",
+        google_api_key="",
+        autostart_ollama=autostart,
+        autostart_wait_s=0.5,
+        autostart_poll_s=0.01,
+        ollama_check_fn=check_fn,
+    )
+    assert result.ok is True
+    assert result.provider == "ollama"
+    assert result.autostart_attempted is True
+    assert result.autostart_succeeded is True
+    assert calls["start"] == 1
+    assert calls["check"] >= 2
+
+
+def test_easy_provider_preflight_ollama_autostart_failure_paths() -> None:
+    fail_result = preflight_provider_for_easy_mode(
+        "ollama",
+        ollama_host="http://127.0.0.1:11434",
+        google_api_key="",
+        ollama_check_fn=lambda host, timeout: _health("ollama", "fail", detail=f"down ({host},{timeout})", model_count=0),
+    )
+    assert fail_result.ok is False
+    assert fail_result.state == "fail"
+    assert fail_result.autostart_attempted is False
+
+    exc_result = preflight_provider_for_easy_mode(
+        "ollama",
+        ollama_host="http://127.0.0.1:11434",
+        google_api_key="",
+        ollama_check_fn=lambda host, timeout: _health("ollama", "fail", detail="down", model_count=0),
+        autostart_ollama=lambda: (_ for _ in ()).throw(RuntimeError("start failed")),
+    )
+    assert exc_result.ok is False
+    assert exc_result.state == "fail"
+    assert exc_result.autostart_attempted is True
+    assert exc_result.autostart_succeeded is False
+    assert "auto-start failed" in exc_result.message.lower()

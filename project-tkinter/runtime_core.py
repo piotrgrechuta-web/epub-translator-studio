@@ -9,7 +9,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import requests
 
@@ -17,6 +17,7 @@ GOOGLE_API_KEY_ENV = "GOOGLE_API_KEY"
 OLLAMA_HOST_DEFAULT = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 DEFAULT_SUPPORTED_TEXT_LANGS: Set[str] = {"en", "pl", "de", "fr", "es", "pt", "ro"}
 ALLOWED_RUN_STEPS: Set[str] = {"translate", "edit"}
+EASY_EXECUTION_MODES: Tuple[str, ...] = ("streaming", "parallel", "translate-only", "edit-only")
 
 
 @dataclass
@@ -66,6 +67,236 @@ class ProviderHealthStatus:
     latency_ms: int
     model_count: int
     detail: str
+
+
+@dataclass(frozen=True)
+class EasyRunPlan:
+    mode: str
+    steps: Tuple[str, ...]
+    uses_queue: bool
+    non_blocking_translate: bool
+    fifo_editor_queue: bool
+
+
+@dataclass(frozen=True)
+class EasyProgressSnapshot:
+    mode: str
+    translate_done: int
+    translate_total: int
+    edit_done: int
+    edit_total: int
+    global_done: int
+    global_total: int
+    global_pct: float
+    phase: str
+
+
+@dataclass(frozen=True)
+class EasyProviderPreflightResult:
+    ok: bool
+    provider: str
+    state: str
+    message: str
+    autostart_attempted: bool = False
+    autostart_succeeded: bool = False
+
+
+def normalize_easy_execution_mode(raw_mode: str) -> str:
+    raw = str(raw_mode or "").strip().lower()
+    aliases = {
+        "stream": "streaming",
+        "streaming": "streaming",
+        "parallel": "parallel",
+        "parallel-lanes": "parallel",
+        "translate-only": "translate-only",
+        "translate_only": "translate-only",
+        "translate": "translate-only",
+        "editing-only": "edit-only",
+        "edit-only": "edit-only",
+        "edit_only": "edit-only",
+        "edit": "edit-only",
+    }
+    mode = aliases.get(raw, "streaming")
+    if mode not in EASY_EXECUTION_MODES:
+        return "streaming"
+    return mode
+
+
+def build_easy_run_plan(execution_mode: str) -> EasyRunPlan:
+    mode = normalize_easy_execution_mode(execution_mode)
+    if mode in {"streaming", "parallel"}:
+        return EasyRunPlan(
+            mode=mode,
+            steps=("translate", "edit"),
+            uses_queue=True,
+            non_blocking_translate=True,
+            fifo_editor_queue=True,
+        )
+    if mode == "translate-only":
+        return EasyRunPlan(
+            mode=mode,
+            steps=("translate",),
+            uses_queue=False,
+            non_blocking_translate=False,
+            fifo_editor_queue=False,
+        )
+    return EasyRunPlan(
+        mode="edit-only",
+        steps=("edit",),
+        uses_queue=False,
+        non_blocking_translate=False,
+        fifo_editor_queue=False,
+    )
+
+
+def compute_easy_progress(
+    execution_mode: str,
+    *,
+    translate_done: int,
+    translate_total: int,
+    edit_done: int,
+    edit_total: int,
+    phase: str = "",
+) -> EasyProgressSnapshot:
+    mode = normalize_easy_execution_mode(execution_mode)
+    tr_done = max(0, int(translate_done or 0))
+    tr_total = max(0, int(translate_total or 0))
+    ed_done = max(0, int(edit_done or 0))
+    ed_total = max(0, int(edit_total or 0))
+
+    if mode in {"streaming", "parallel"}:
+        # For same-file easy flow edit count mirrors translation cardinality.
+        effective_edit_total = ed_total if ed_total > 0 else tr_total
+        global_total = max(0, tr_total + effective_edit_total)
+        global_done = min(tr_done, tr_total) + min(ed_done, effective_edit_total)
+    elif mode == "translate-only":
+        global_total = tr_total
+        global_done = min(tr_done, tr_total)
+    else:
+        global_total = ed_total
+        global_done = min(ed_done, ed_total)
+
+    global_pct = (float(global_done) / float(global_total) * 100.0) if global_total > 0 else 0.0
+    phase_txt = str(phase or "").strip()
+    return EasyProgressSnapshot(
+        mode=mode,
+        translate_done=tr_done,
+        translate_total=tr_total,
+        edit_done=ed_done,
+        edit_total=ed_total,
+        global_done=global_done,
+        global_total=global_total,
+        global_pct=global_pct,
+        phase=phase_txt,
+    )
+
+
+def preflight_provider_for_easy_mode(
+    provider: str,
+    *,
+    ollama_host: str,
+    google_api_key: str,
+    timeout_s: int = 10,
+    autostart_ollama: Optional[Callable[[], bool]] = None,
+    autostart_wait_s: float = 12.0,
+    autostart_poll_s: float = 1.0,
+    ollama_check_fn: Optional[Callable[[str, int], ProviderHealthStatus]] = None,
+    google_check_fn: Optional[Callable[[str, int], ProviderHealthStatus]] = None,
+) -> EasyProviderPreflightResult:
+    if ollama_check_fn is None:
+        ollama_check_fn = check_ollama_health
+    if google_check_fn is None:
+        google_check_fn = check_google_health
+    p = str(provider or "").strip().lower()
+    safe_timeout = max(1, int(timeout_s or 10))
+    if p == "google":
+        st = google_check_fn(str(google_api_key or "").strip(), safe_timeout)
+        if st.state == "ok":
+            return EasyProviderPreflightResult(
+                ok=True,
+                provider="google",
+                state="ok",
+                message=f"Google ready ({st.model_count} models, {st.latency_ms}ms).",
+            )
+        if st.state == "skip":
+            return EasyProviderPreflightResult(
+                ok=False,
+                provider="google",
+                state="skip",
+                message=f"Google API key missing ({GOOGLE_API_KEY_ENV}).",
+            )
+        return EasyProviderPreflightResult(
+            ok=False,
+            provider="google",
+            state="fail",
+            message=f"Google preflight failed: {st.detail}",
+        )
+
+    if p != "ollama":
+        return EasyProviderPreflightResult(
+            ok=False,
+            provider=p or "unknown",
+            state="fail",
+            message=f"Unsupported provider for easy mode: {provider}",
+        )
+
+    st = ollama_check_fn(str(ollama_host or OLLAMA_HOST_DEFAULT).strip() or OLLAMA_HOST_DEFAULT, safe_timeout)
+    if st.state == "ok":
+        return EasyProviderPreflightResult(
+            ok=True,
+            provider="ollama",
+            state="ok",
+            message=f"Ollama ready ({st.model_count} models, {st.latency_ms}ms).",
+        )
+
+    attempted = False
+    if autostart_ollama is not None:
+        attempted = True
+        try:
+            started = bool(autostart_ollama())
+        except Exception as e:
+            return EasyProviderPreflightResult(
+                ok=False,
+                provider="ollama",
+                state="fail",
+                message=f"Ollama auto-start failed: {e}",
+                autostart_attempted=True,
+                autostart_succeeded=False,
+            )
+        if started:
+            deadline = time.monotonic() + max(1.0, float(autostart_wait_s or 12.0))
+            poll_s = max(0.2, float(autostart_poll_s or 1.0))
+            while True:
+                st2 = ollama_check_fn(str(ollama_host or OLLAMA_HOST_DEFAULT).strip() or OLLAMA_HOST_DEFAULT, safe_timeout)
+                if st2.state == "ok":
+                    return EasyProviderPreflightResult(
+                        ok=True,
+                        provider="ollama",
+                        state="ok",
+                        message=f"Ollama auto-started ({st2.model_count} models, {st2.latency_ms}ms).",
+                        autostart_attempted=True,
+                        autostart_succeeded=True,
+                    )
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(poll_s)
+        return EasyProviderPreflightResult(
+            ok=False,
+            provider="ollama",
+            state="fail",
+            message=f"Ollama unavailable after auto-start attempt: {st.detail}",
+            autostart_attempted=True,
+            autostart_succeeded=False,
+        )
+
+    return EasyProviderPreflightResult(
+        ok=False,
+        provider="ollama",
+        state="fail",
+        message=f"Ollama preflight failed: {st.detail}",
+        autostart_attempted=attempted,
+        autostart_succeeded=False,
+    )
 
 
 def list_ollama_models(host: str, timeout_s: int = 20) -> List[str]:

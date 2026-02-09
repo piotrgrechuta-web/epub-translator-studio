@@ -38,16 +38,19 @@ class HorizonGUI(base.TranslatorGUI):
         tabs = ttk.Notebook(tabs_wrap)
         tabs.pack(fill="both", expand=True)
 
+        easy_tab = ttk.Frame(tabs, padding=8)
         files_tab = ttk.Frame(tabs, padding=8)
         engine_tab = ttk.Frame(tabs, padding=8)
         log_tab = ttk.Frame(tabs, padding=8)
         layout_tab = ttk.Frame(tabs, padding=8)
 
+        tabs.add(easy_tab, text="Easy Mode")
         tabs.add(files_tab, text="Pliki i Tryb")
         tabs.add(engine_tab, text="Silnik i Model")
         tabs.add(log_tab, text="Log")
         tabs.add(layout_tab, text="Układanie EPUB")
 
+        self._build_easy_mode_card(easy_tab)
         self._build_project_card(files_tab)
         self._build_files_card(files_tab)
         self._build_run_card(files_tab)

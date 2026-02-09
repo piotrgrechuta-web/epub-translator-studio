@@ -44,12 +44,16 @@ from studio_repository import SQLiteStudioRepository
 from app_events import flush_event_log, log_event_jsonl
 from prompt_presets import filter_prompt_presets, load_prompt_presets, save_default_prompt_presets
 from runtime_core import (
+    EASY_EXECUTION_MODES as CORE_EASY_EXECUTION_MODES,
     RunOptions as CoreRunOptions,
     build_run_command as core_build_run_command,
+    build_easy_run_plan as core_build_easy_run_plan,
+    compute_easy_progress as core_compute_easy_progress,
     build_validation_command as core_build_validation_command,
     gather_provider_health as core_gather_provider_health,
     list_google_models as core_list_google_models,
     list_ollama_models as core_list_ollama_models,
+    preflight_provider_for_easy_mode as core_preflight_provider_for_easy_mode,
     validate_run_options as core_validate_run_options,
 )
 from series_store import SeriesStore, detect_series_hint
@@ -83,6 +87,7 @@ GOOGLE_TIMEOUT_RE = re.compile(r"\[Google\]\s+timeout/conn error.*(?:pr[oó]ba|a
 OLLAMA_TIMEOUT_RE = re.compile(r"\[Ollama\]\s+timeout/conn error.*(?:pr[oó]ba|attempt)\s+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
 LEDGER_ERROR_ALERT_THRESHOLD = 5
 LOG = logging.getLogger(__name__)
+EASY_EXEC_MODES: Tuple[str, ...] = tuple(CORE_EASY_EXECUTION_MODES)
 
 
 def parse_epubcheck_findings(raw_output: str) -> Dict[str, int]:
@@ -276,6 +281,14 @@ class TranslatorGUI:
             self.db.set_setting("tooltip_mode", mode_raw)
         self.proc: Optional[subprocess.Popen] = None
         self.run_all_active = False
+        self._active_run_step: str = ""
+        self._easy_session: Optional[Dict[str, Any]] = None
+        self._easy_progress_state: Dict[str, int] = {
+            "translate_done": 0,
+            "translate_total": 0,
+            "edit_done": 0,
+            "edit_total": 0,
+        }
         self.current_project_id: Optional[int] = None
         self.current_run_id: Optional[int] = None
         self.op_history: List[Dict[str, Any]] = []
@@ -787,6 +800,18 @@ class TranslatorGUI:
         self.ui_language_var = tk.StringVar(value=self.i18n.lang)
         self.source_lang_var = tk.StringVar(value="en")
         self.target_lang_var = tk.StringVar(value="pl")
+        self.easy_input_epub_var = tk.StringVar()
+        self.easy_output_dir_var = tk.StringVar(value=str(self.workdir))
+        self.easy_translate_model_var = tk.StringVar()
+        self.easy_edit_model_var = tk.StringVar()
+        self.easy_execution_mode_var = tk.StringVar(value="streaming")
+        self.easy_ollama_autostart_var = tk.BooleanVar(value=True)
+        self.easy_global_progress_var = tk.StringVar(value="Global: 0 / 0 (0%)")
+        self.easy_translate_counter_var = tk.StringVar(value="Translate: 0 / 0")
+        self.easy_edit_counter_var = tk.StringVar(value="Edit: 0 / 0")
+        self.easy_phase_var = tk.StringVar(value="Phase: idle")
+        self.easy_provider_status_var = tk.StringVar(value="Provider preflight: idle")
+        self.easy_progress_value_var = tk.DoubleVar(value=0.0)
         self.command_preview_var = tk.StringVar()
         self.estimate_var = tk.StringVar(value=self.tr("status.estimate.none", "Estymacja: brak"))
         self.queue_status_var = tk.StringVar(value=self.tr("status.queue.idle", "Queue: idle"))
@@ -844,10 +869,13 @@ class TranslatorGUI:
         self._build_project_card(left)
         tabs = ttk.Notebook(left)
         tabs.pack(fill="both", expand=True, pady=(0, 10))
+        easy_tab = ttk.Frame(tabs, padding=4)
         basic_tab = ttk.Frame(tabs, padding=4)
         adv_tab = ttk.Frame(tabs, padding=4)
+        tabs.add(easy_tab, text="Easy Mode")
         tabs.add(basic_tab, text=self.tr("tab.basic", "Podstawowe"))
         tabs.add(adv_tab, text=self.tr("tab.advanced", "Zaawansowane"))
+        self._build_easy_mode_card(easy_tab)
         self._build_files_card(basic_tab)
         self._build_engine_card(basic_tab)
         self._build_advanced_card(adv_tab)
@@ -861,6 +889,356 @@ class TranslatorGUI:
         self._inline_notice_label.pack(fill="x", pady=(section_gap, 0))
         self.status_label = ttk.Label(outer, textvariable=self.status_var, style="StatusReady.TLabel")
         self.status_label.pack(anchor="w", pady=(card_gap, 0))
+
+    def _build_easy_mode_card(self, parent: ttk.Frame) -> None:
+        card = ttk.LabelFrame(parent, text="Easy Mode (one-file guided flow)", padding=12, style="Card.TLabelframe")
+        card.pack(fill="x", pady=(0, self._theme_space("space_sm", 8)))
+        card.columnconfigure(1, weight=1)
+        card.columnconfigure(3, weight=1)
+
+        ttk.Label(
+            card,
+            text=(
+                "Choose one EPUB, language pair, translator/editor models and output folder. "
+                "Advanced runtime settings remain hidden; safe defaults from current runtime profile are reused."
+            ),
+            style="Helper.TLabel",
+            wraplength=980,
+            justify="left",
+        ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
+
+        ttk.Label(card, text="Input file (EPUB):").grid(row=1, column=0, sticky="w")
+        ttk.Entry(card, textvariable=self.easy_input_epub_var).grid(row=1, column=1, columnspan=2, sticky="ew")
+
+        def pick_easy_input() -> None:
+            path = filedialog.askopenfilename(
+                title="Easy Mode: input file",
+                initialdir=str(self.workdir),
+                filetypes=[("EPUB", "*.epub"), ("All", "*.*")],
+            )
+            if path:
+                self.easy_input_epub_var.set(path)
+                self._easy_suggest_paths()
+
+        ttk.Button(card, text="Choose", command=pick_easy_input, style="Secondary.TButton").grid(
+            row=1, column=3, sticky="w", padx=(8, 0)
+        )
+
+        ttk.Label(card, text="Output folder:").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(card, textvariable=self.easy_output_dir_var).grid(row=2, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+
+        def pick_easy_outdir() -> None:
+            path = filedialog.askdirectory(title="Easy Mode: output folder", initialdir=str(self.workdir))
+            if path:
+                self.easy_output_dir_var.set(path)
+                self._easy_suggest_paths()
+
+        ttk.Button(card, text="Choose", command=pick_easy_outdir, style="Secondary.TButton").grid(
+            row=2, column=3, sticky="w", padx=(8, 0), pady=(8, 0)
+        )
+
+        ttk.Label(card, text="Source language:").grid(row=3, column=0, sticky="w", pady=(8, 0))
+        src_combo = ttk.Combobox(card, textvariable=self.source_lang_var, state="readonly", width=12)
+        src_combo["values"] = list(SUPPORTED_TEXT_LANGS.keys())
+        src_combo.grid(row=3, column=1, sticky="w", pady=(8, 0))
+        src_combo.bind("<<ComboboxSelected>>", lambda _: self._easy_suggest_paths())
+
+        ttk.Label(card, text="Target language:").grid(row=3, column=2, sticky="w", pady=(8, 0))
+        tgt_combo = ttk.Combobox(card, textvariable=self.target_lang_var, state="readonly", width=12)
+        tgt_combo["values"] = list(SUPPORTED_TEXT_LANGS.keys())
+        tgt_combo.grid(row=3, column=3, sticky="w", pady=(8, 0))
+        tgt_combo.bind("<<ComboboxSelected>>", lambda _: self._easy_suggest_paths())
+
+        ttk.Label(card, text="Provider:").grid(row=4, column=0, sticky="w", pady=(8, 0))
+        pbox = ttk.Frame(card)
+        pbox.grid(row=4, column=1, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Radiobutton(
+            pbox,
+            text="Ollama",
+            value="ollama",
+            variable=self.provider_var,
+            command=lambda: (self._on_provider_change(), self._easy_refresh_model_choices()),
+        ).pack(side="left", padx=(0, 12))
+        ttk.Radiobutton(
+            pbox,
+            text="Google",
+            value="google",
+            variable=self.provider_var,
+            command=lambda: (self._on_provider_change(), self._easy_refresh_model_choices()),
+        ).pack(side="left")
+
+        ttk.Label(card, text=f"Google API key (or env {GOOGLE_API_KEY_ENV}):").grid(row=5, column=0, sticky="w", pady=(8, 0))
+        self.easy_google_key_entry = ttk.Entry(card, textvariable=self.google_api_key_var, show="*")
+        self.easy_google_key_entry.grid(row=5, column=1, columnspan=3, sticky="ew", pady=(8, 0))
+
+        ttk.Label(card, text="Ollama host:").grid(row=6, column=0, sticky="w", pady=(8, 0))
+        self.easy_ollama_host_entry = ttk.Entry(card, textvariable=self.ollama_host_var)
+        self.easy_ollama_host_entry.grid(row=6, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+        ttk.Checkbutton(
+            card,
+            text="Auto-start Ollama if unavailable",
+            variable=self.easy_ollama_autostart_var,
+        ).grid(row=6, column=3, sticky="w", pady=(8, 0))
+
+        ttk.Label(card, text="Execution mode:").grid(row=7, column=0, sticky="w", pady=(8, 0))
+        mode_combo = ttk.Combobox(card, textvariable=self.easy_execution_mode_var, state="readonly", width=16)
+        mode_combo["values"] = list(EASY_EXEC_MODES)
+        mode_combo.grid(row=7, column=1, sticky="w", pady=(8, 0))
+
+        ttk.Label(card, text="Translator model:").grid(row=8, column=0, sticky="w", pady=(8, 0))
+        self.easy_translate_model_combo = ttk.Combobox(card, textvariable=self.easy_translate_model_var, state="readonly")
+        self.easy_translate_model_combo.grid(row=8, column=1, sticky="ew", pady=(8, 0))
+        ttk.Label(card, text="Editor model:").grid(row=8, column=2, sticky="w", pady=(8, 0))
+        self.easy_edit_model_combo = ttk.Combobox(card, textvariable=self.easy_edit_model_var, state="readonly")
+        self.easy_edit_model_combo.grid(row=8, column=3, sticky="ew", pady=(8, 0))
+
+        actions = ttk.Frame(card)
+        actions.grid(row=9, column=0, columnspan=4, sticky="w", pady=(10, 0))
+        ttk.Button(actions, text="Refresh models", command=self._refresh_models, style="Secondary.TButton").pack(side="left")
+        ttk.Button(actions, text="Start Easy Run", command=self._start_easy_mode, style="Primary.TButton").pack(side="left", padx=(8, 0))
+
+        progress = ttk.Frame(card)
+        progress.grid(row=10, column=0, columnspan=4, sticky="ew", pady=(10, 0))
+        progress.columnconfigure(0, weight=1)
+        ttk.Label(progress, textvariable=self.easy_global_progress_var, style="Sub.TLabel").grid(row=0, column=0, sticky="w")
+        self.easy_progress_bar = ttk.Progressbar(
+            progress,
+            mode="determinate",
+            variable=self.easy_progress_value_var,
+            maximum=100.0,
+        )
+        self.easy_progress_bar.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        ttk.Label(progress, textvariable=self.easy_translate_counter_var, style="Sub.TLabel").grid(row=2, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(progress, textvariable=self.easy_edit_counter_var, style="Sub.TLabel").grid(row=3, column=0, sticky="w")
+        ttk.Label(progress, textvariable=self.easy_phase_var, style="Sub.TLabel").grid(row=4, column=0, sticky="w")
+        ttk.Label(progress, textvariable=self.easy_provider_status_var, style="Helper.TLabel").grid(row=5, column=0, sticky="w", pady=(2, 0))
+
+        self.easy_input_epub_var.trace_add("write", lambda *_: self._easy_suggest_paths())
+        self.easy_output_dir_var.trace_add("write", lambda *_: self._easy_suggest_paths())
+        self._easy_refresh_model_choices()
+        self._easy_suggest_paths()
+
+    def _easy_sync_from_core(self, *, force: bool = False) -> None:
+        if force or not self.easy_input_epub_var.get().strip():
+            self.easy_input_epub_var.set(self.input_epub_var.get().strip())
+        if force or not self.easy_output_dir_var.get().strip():
+            in_path = Path(self.input_epub_var.get().strip()) if self.input_epub_var.get().strip() else None
+            if in_path is not None:
+                self.easy_output_dir_var.set(str(in_path.parent))
+        if force or not self.easy_translate_model_var.get().strip():
+            self.easy_translate_model_var.set(self.model_var.get().strip())
+        if force or not self.easy_edit_model_var.get().strip():
+            self.easy_edit_model_var.set(self.model_var.get().strip())
+        self._easy_suggest_paths()
+
+    def _easy_refresh_model_choices(self) -> None:
+        values: List[str] = []
+        try:
+            values = list(self.model_combo["values"])  # type: ignore[index]
+        except Exception:
+            values = []
+        if hasattr(self, "easy_translate_model_combo"):
+            self.easy_translate_model_combo["values"] = values
+        if hasattr(self, "easy_edit_model_combo"):
+            self.easy_edit_model_combo["values"] = values
+        if values:
+            if self.easy_translate_model_var.get().strip() not in values:
+                self.easy_translate_model_var.set(values[0])
+            if self.easy_edit_model_var.get().strip() not in values:
+                self.easy_edit_model_var.set(values[0])
+
+    def _easy_suggest_paths(self) -> None:
+        in_raw = self.easy_input_epub_var.get().strip()
+        out_raw = self.easy_output_dir_var.get().strip()
+        if not in_raw:
+            return
+        src = Path(in_raw)
+        if not out_raw:
+            self.easy_output_dir_var.set(str(src.parent))
+            out_raw = str(src.parent)
+        tgt = (self.target_lang_var.get() or "pl").strip().lower()
+        out_dir = Path(out_raw)
+        stem = src.stem
+        self.step_values.setdefault("translate", {})
+        self.step_values.setdefault("edit", {})
+        self.step_values["translate"]["output"] = str(out_dir / f"{stem}_{tgt}.epub")
+        self.step_values["edit"]["output"] = str(out_dir / f"{stem}_{tgt}_redakcja.epub")
+        self.step_values["translate"]["cache"] = str(out_dir / f"cache_{stem}.jsonl")
+        self.step_values["edit"]["cache"] = str(out_dir / f"cache_{stem}_redakcja.jsonl")
+        p_t = self.workdir / "prompt.txt"
+        p_e = self.workdir / "prompt_redakcja.txt"
+        fallback_prompt = self.prompt_var.get().strip()
+        self.step_values["translate"]["prompt"] = str(p_t) if p_t.exists() else fallback_prompt
+        if p_e.exists():
+            self.step_values["edit"]["prompt"] = str(p_e)
+        elif p_t.exists():
+            self.step_values["edit"]["prompt"] = str(p_t)
+        else:
+            self.step_values["edit"]["prompt"] = fallback_prompt
+
+    def _easy_reset_progress(self, execution_mode: str) -> None:
+        self._easy_progress_state = {
+            "translate_done": 0,
+            "translate_total": 0,
+            "edit_done": 0,
+            "edit_total": 0,
+        }
+        self._easy_update_progress(execution_mode, phase="Phase: starting")
+
+    def _easy_update_progress(self, execution_mode: str, *, phase: str = "") -> None:
+        snap = core_compute_easy_progress(
+            execution_mode,
+            translate_done=int(self._easy_progress_state.get("translate_done", 0) or 0),
+            translate_total=int(self._easy_progress_state.get("translate_total", 0) or 0),
+            edit_done=int(self._easy_progress_state.get("edit_done", 0) or 0),
+            edit_total=int(self._easy_progress_state.get("edit_total", 0) or 0),
+            phase=phase,
+        )
+        self.easy_progress_value_var.set(float(snap.global_pct))
+        self.easy_global_progress_var.set(
+            f"Global: {snap.global_done} / {snap.global_total} ({snap.global_pct:.1f}%)"
+        )
+        self.easy_translate_counter_var.set(f"Translate: {snap.translate_done} / {snap.translate_total}")
+        self.easy_edit_counter_var.set(f"Edit: {snap.edit_done} / {snap.edit_total}")
+        self.easy_phase_var.set(snap.phase or self.easy_phase_var.get())
+
+    def _easy_autostart_ollama(self) -> bool:
+        cmd: List[str]
+        if platform.system().lower().startswith("win"):
+            cmd = ["cmd.exe", "/c", "start", "/b", "ollama", "serve"]
+        else:
+            cmd = ["ollama", "serve"]
+        self.log_queue.put("[EASY] Ollama unavailable, attempting auto-start...\n")
+        try:
+            kwargs: Dict[str, Any] = {
+                "cwd": str(self.workdir),
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+            }
+            if not platform.system().lower().startswith("win"):
+                kwargs["start_new_session"] = True
+            subprocess.Popen(cmd, **kwargs)
+            return True
+        except Exception as e:
+            self.log_queue.put(f"[EASY] Ollama auto-start failed: {e}\n")
+            return False
+
+    def _ensure_easy_project(self, input_epub: Path) -> bool:
+        if self.current_project_id is not None:
+            return True
+        vals = self._default_project_values(input_epub)
+        try:
+            pid = self.db.create_project(f"{input_epub.stem}-easy", vals)
+        except Exception as e:
+            self._msg_error(f"Easy Mode: failed to create project automatically:\n{e}")
+            return False
+        self.current_project_id = pid
+        self.db.set_setting("active_project_id", pid)
+        self._refresh_projects(select_current=True)
+        return True
+
+    def _start_easy_mode(self) -> None:
+        if self.proc is not None:
+            self._msg_info(self.tr("info.process_running", "Process is already running."))
+            return
+
+        input_raw = self.easy_input_epub_var.get().strip()
+        if not input_raw:
+            self._msg_error("Easy Mode: input EPUB is required.")
+            return
+        input_epub = Path(input_raw)
+        if not input_epub.exists():
+            self._msg_error(f"Easy Mode: input EPUB not found: {input_epub}")
+            return
+        if input_epub.suffix.lower() != ".epub":
+            self._msg_error("Easy Mode currently supports EPUB input.")
+            return
+
+        output_dir_raw = self.easy_output_dir_var.get().strip()
+        if not output_dir_raw:
+            self._msg_error("Easy Mode: output folder is required.")
+            return
+        output_dir = Path(output_dir_raw)
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            self._msg_error(f"Easy Mode: cannot create output folder:\n{e}")
+            return
+
+        plan = core_build_easy_run_plan(self.easy_execution_mode_var.get().strip())
+        provider = (self.provider_var.get().strip().lower() or "ollama")
+        try:
+            timeout_s = max(6, min(30, int(float(self.timeout_var.get().strip() or "20"))))
+        except Exception:
+            timeout_s = 20
+        preflight = core_preflight_provider_for_easy_mode(
+            provider,
+            ollama_host=self.ollama_host_var.get().strip() or OLLAMA_HOST_DEFAULT,
+            google_api_key=self._google_api_key(),
+            timeout_s=timeout_s,
+            autostart_ollama=self._easy_autostart_ollama if bool(self.easy_ollama_autostart_var.get()) else None,
+        )
+        self.easy_provider_status_var.set(f"Provider preflight: {preflight.message}")
+        self.log_queue.put(f"[EASY][PREFLIGHT] {preflight.message}\n")
+        if not preflight.ok:
+            self._msg_error(preflight.message)
+            return
+
+        if not self._ensure_easy_project(input_epub):
+            return
+
+        self.input_epub_var.set(str(input_epub))
+        self.source_lang_var.set((self.source_lang_var.get() or "en").strip().lower())
+        self.target_lang_var.set((self.target_lang_var.get() or "pl").strip().lower())
+        self._easy_suggest_paths()
+
+        tr_model = self.easy_translate_model_var.get().strip()
+        ed_model = self.easy_edit_model_var.get().strip()
+        if "translate" in plan.steps and not tr_model:
+            self._msg_error("Easy Mode: translator model is required.")
+            return
+        if "edit" in plan.steps and not ed_model:
+            self._msg_error("Easy Mode: editor model is required.")
+            return
+
+        self._easy_session = {
+            "mode": plan.mode,
+            "translate_model": tr_model,
+            "edit_model": ed_model,
+            "output_dir": str(output_dir),
+        }
+        self._easy_reset_progress(plan.mode)
+
+        first_step = plan.steps[0]
+        self.mode_var.set(first_step)
+        self._load_step_values(first_step)
+        if first_step == "translate":
+            self.model_var.set(tr_model)
+            self.output_epub_var.set(self.step_values.get("translate", {}).get("output", self.output_epub_var.get()))
+            self.prompt_var.set(self.step_values.get("translate", {}).get("prompt", self.prompt_var.get()))
+            self.cache_var.set(self.step_values.get("translate", {}).get("cache", self.cache_var.get()))
+        else:
+            self.model_var.set(ed_model)
+            self.output_epub_var.set(self.step_values.get("edit", {}).get("output", self.output_epub_var.get()))
+            self.prompt_var.set(self.step_values.get("edit", {}).get("prompt", self.prompt_var.get()))
+            self.cache_var.set(self.step_values.get("edit", {}).get("cache", self.cache_var.get()))
+        self._update_command_preview()
+        self._save_project()
+        self._start_process()
+
+    def _start_easy_followup_edit(self) -> None:
+        session = self._easy_session or {}
+        if (session.get("mode") not in {"streaming", "parallel"}) or self.proc is not None:
+            return
+        self.mode_var.set("edit")
+        self._load_step_values("edit")
+        self.model_var.set(str(session.get("edit_model") or self.easy_edit_model_var.get().strip()))
+        self.output_epub_var.set(self.step_values.get("edit", {}).get("output", self.output_epub_var.get()))
+        self.prompt_var.set(self.step_values.get("edit", {}).get("prompt", self.prompt_var.get()))
+        self.cache_var.set(self.step_values.get("edit", {}).get("cache", self.cache_var.get()))
+        self._update_command_preview()
+        self._save_project()
+        self._start_process()
 
     def _build_first_start_card(self, parent: ttk.Frame) -> None:
         card = ttk.LabelFrame(parent, text=self.tr("section.first_start", "Pierwsze uruchomienie (wymagane)"), padding=12, style="Card.TLabelframe")
@@ -2933,6 +3311,7 @@ class TranslatorGUI:
         }
         self._load_step_values(self.mode_var.get())
         self._on_provider_change()
+        self._easy_sync_from_core(force=True)
         self._refresh_prompt_preset_options()
         self._update_command_preview()
         self._refresh_run_history()
@@ -3418,6 +3797,7 @@ class TranslatorGUI:
                     pass
 
         self._on_provider_change()
+        self._easy_sync_from_core(force=True)
 
     def _find_translator(self) -> Path:
         candidates = [
@@ -3448,6 +3828,7 @@ class TranslatorGUI:
 
     def _on_input_selected(self) -> None:
         self._suggest_output_and_cache()
+        self._easy_sync_from_core(force=True)
         self._save_project()
         self._update_command_preview()
 
@@ -3480,9 +3861,17 @@ class TranslatorGUI:
         if provider == "ollama":
             self.ollama_host_entry.configure(state="normal")
             self.google_key_entry.configure(state="disabled")
+            if hasattr(self, "easy_ollama_host_entry"):
+                self.easy_ollama_host_entry.configure(state="normal")
+            if hasattr(self, "easy_google_key_entry"):
+                self.easy_google_key_entry.configure(state="disabled")
         else:
             self.ollama_host_entry.configure(state="disabled")
             self.google_key_entry.configure(state="normal")
+            if hasattr(self, "easy_ollama_host_entry"):
+                self.easy_ollama_host_entry.configure(state="disabled")
+            if hasattr(self, "easy_google_key_entry"):
+                self.easy_google_key_entry.configure(state="normal")
         self._refresh_prompt_preset_options()
         self._update_command_preview()
 
@@ -3727,10 +4116,12 @@ class TranslatorGUI:
         if not models:
             self.model_var.set("")
             self.model_status.configure(text="Brak modeli")
+            self._easy_refresh_model_choices()
             self._update_command_preview()
             return
         if self.model_var.get() not in models:
             self.model_var.set(models[0])
+        self._easy_refresh_model_choices()
         self.model_status.configure(text=f"ZaÄąâ€šadowano {len(models)} modeli")
         self._update_command_preview()
 
@@ -4010,6 +4401,18 @@ class TranslatorGUI:
             self.progress_text_var.set(self.tr("status.progress.runtime", "Progress: {done} / {total} ({pct})", done=done, total=total, pct=pct_str))
             self.phase_var.set(self.tr("status.phase.detail", "Phase: {detail}", detail=detail))
             self._set_status(self.tr("status.translation.running", "Translation in progress..."), "running")
+            if self._easy_session is not None:
+                run_step = str(self._active_run_step or self.mode_var.get() or "").strip().lower()
+                if run_step == "edit":
+                    self._easy_progress_state["edit_done"] = done
+                    self._easy_progress_state["edit_total"] = total
+                else:
+                    self._easy_progress_state["translate_done"] = done
+                    self._easy_progress_state["translate_total"] = total
+                self._easy_update_progress(
+                    str(self._easy_session.get("mode") or "streaming"),
+                    phase=f"Phase: {detail}",
+                )
             self._update_live_run_metrics()
             return
 
@@ -4031,6 +4434,11 @@ class TranslatorGUI:
             self.phase_var.set(self.tr("status.phase.ollama", "Phase: Ollama requests"))
         elif "=== KONIEC ===" in s:
             self.phase_var.set(self.tr("status.phase.finalizing", "Phase: finalizing"))
+        if self._easy_session is not None:
+            self._easy_update_progress(
+                str(self._easy_session.get("mode") or "streaming"),
+                phase=self.phase_var.get(),
+            )
         self._update_live_run_metrics()
 
     def _poll_log_queue(self) -> None:
@@ -4179,6 +4587,7 @@ class TranslatorGUI:
         provider = self.provider_var.get().strip()
         google_api_key = self._google_api_key() if provider == "google" else ""
         run_step = self.mode_var.get().strip() or "translate"
+        self._active_run_step = run_step
         cmd = self._build_command()
         redacted = self._redacted_cmd(cmd)
         self.global_done = 0
@@ -4209,10 +4618,16 @@ class TranslatorGUI:
         self.validate_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self._set_status(self.tr("status.translation.running", "Translation in progress..."), "running")
+        if self._easy_session is not None:
+            self._easy_update_progress(
+                str(self._easy_session.get("mode") or "streaming"),
+                phase=f"Phase: {run_step} starting",
+            )
         self.root.after(1000, self._tick_activity)
 
         def runner() -> None:
             runner_db: Optional[ProjectDB] = None
+            easy_followup_edit = False
             try:
                 runner_db = ProjectDB(SQLITE_FILE)
                 env = {**os.environ, "PYTHONUNBUFFERED": "1"}
@@ -4267,9 +4682,15 @@ class TranslatorGUI:
                                 runner_db.update_project(self.current_project_id, {"status": "needs_review"})
                             self.log_queue.put(f"[QA-GATE] {self.tr('log.qa_gate_blocked', 'Auto transition to edit blocked.')}" + f" {gate_msg}\n")
                         elif (edit_cfg.get("output", "") or "").strip() and (edit_cfg.get("prompt", "") or "").strip():
-                            if runner_db:
-                                runner_db.mark_project_pending(self.current_project_id, "edit")
-                                runner_db.update_project(self.current_project_id, {"status": "pending"})
+                            easy_mode = str((self._easy_session or {}).get("mode") or "")
+                            if easy_mode in {"streaming", "parallel"}:
+                                easy_followup_edit = True
+                            elif easy_mode in {"translate-only", "edit-only"}:
+                                pass
+                            else:
+                                if runner_db:
+                                    runner_db.mark_project_pending(self.current_project_id, "edit")
+                                    runner_db.update_project(self.current_project_id, {"status": "pending"})
                     if self.current_run_id is not None:
                         if runner_db:
                             runner_db.finish_run(
@@ -4340,16 +4761,26 @@ class TranslatorGUI:
                 self.proc = None
                 self.run_started_at = None
                 self.last_log_at = None
+                self._active_run_step = ""
                 self.root.after(0, self._refresh_projects)
                 self.root.after(0, self._refresh_run_history)
                 self.root.after(0, self._refresh_ledger_status)
                 self.root.after(0, lambda: self.start_btn.configure(state="normal"))
                 self.root.after(0, lambda: self.validate_btn.configure(state="normal"))
                 self.root.after(0, lambda: self.stop_btn.configure(state="disabled"))
-                if self.run_all_active:
+                if easy_followup_edit:
+                    self.root.after(200, self._start_easy_followup_edit)
+                elif self.run_all_active:
                     self.root.after(200, self._continue_run_all)
                 elif self.series_batch_context is not None and bool(self.series_batch_context.get("stopped")):
                     self.root.after(200, lambda: self._finalize_series_batch("stopped"))
+                else:
+                    if self._easy_session is not None:
+                        self._easy_update_progress(
+                            str(self._easy_session.get("mode") or "streaming"),
+                            phase="Phase: finished",
+                        )
+                        self._easy_session = None
 
         threading.Thread(target=runner, daemon=True).start()
 
@@ -4529,6 +4960,12 @@ class TranslatorGUI:
             "language_guard_config": self.language_guard_config_var.get(),
             "source_lang": self.source_lang_var.get(),
             "target_lang": self.target_lang_var.get(),
+            "easy_input_epub": self.easy_input_epub_var.get(),
+            "easy_output_dir": self.easy_output_dir_var.get(),
+            "easy_translate_model": self.easy_translate_model_var.get(),
+            "easy_edit_model": self.easy_edit_model_var.get(),
+            "easy_execution_mode": self.easy_execution_mode_var.get(),
+            "easy_ollama_autostart": bool(self.easy_ollama_autostart_var.get()),
         }
         data.pop("google_api_key", None)
         return data
@@ -4576,6 +5013,14 @@ class TranslatorGUI:
         self.tooltip_mode_var.set(str(data.get("tooltip_mode", self.tooltip_mode_var.get() or "hybrid")))
         self.source_lang_var.set(str(data.get("source_lang", self.source_lang_var.get() or "en")))
         self.target_lang_var.set(str(data.get("target_lang", self.target_lang_var.get() or "pl")))
+        self.easy_input_epub_var.set(str(data.get("easy_input_epub", self.easy_input_epub_var.get() or "")))
+        self.easy_output_dir_var.set(str(data.get("easy_output_dir", self.easy_output_dir_var.get() or str(self.workdir))))
+        self.easy_translate_model_var.set(str(data.get("easy_translate_model", self.easy_translate_model_var.get() or "")))
+        self.easy_edit_model_var.set(str(data.get("easy_edit_model", self.easy_edit_model_var.get() or "")))
+        self.easy_execution_mode_var.set(
+            core_build_easy_run_plan(str(data.get("easy_execution_mode", self.easy_execution_mode_var.get() or "streaming"))).mode
+        )
+        self.easy_ollama_autostart_var.set(bool(data.get("easy_ollama_autostart", self.easy_ollama_autostart_var.get())))
         self.ui_language_var.set(str(data.get("ui_language", self.ui_language_var.get() or self.i18n.lang)))
         self._on_tooltip_mode_change()
         if self.ui_language_var.get().strip().lower() != self.i18n.lang:
@@ -4583,6 +5028,8 @@ class TranslatorGUI:
         self._on_provider_change()
         self._refresh_prompt_preset_options()
         self._refresh_ledger_status()
+        self._easy_sync_from_core()
+        self._easy_refresh_model_choices()
         self._update_command_preview()
 
     def _save_settings(self, silent: bool = False) -> None:
