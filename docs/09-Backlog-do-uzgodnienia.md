@@ -10,8 +10,8 @@ Status:
 - `M7 domkniete`: pelny series manager (termy + style rules + lorebook + historia), prompt augmentation kontekstem serii, orchestrator batch serii + raport.
 - Increment Async I/O: zrealizowany etap preflight providerow/pluginow (asynchroniczne health-checki i telemetryka), bez zmiany deterministycznego pipeline translacji.
 - Milestone `M3-M7` i ich issue sa domkniete na GitHub.
-- Aktywny jest milestone `M8` (issue: `#45-#49`).
-- Zaplanowany jest milestone `M9` (issue: `#50-#54`).
+- Milestone `M8` jest domkniety (issue: `#45-#49` zamkniete).
+- Aktywny jest milestone `M9` (issue: `#50-#54`).
 
 ## Cel
 
@@ -19,12 +19,12 @@ Zamienic roadmape na konkretne, mierzalne zadania z jasnym zakresem i kryteriami
 
 ## Aktywne milestone'y
 
-1. `M8: Async Runtime + Release Automation`
-2. `M9: Literary Consistency + Assistive QA + MCP`
+1. `M9: Literary Consistency + Assistive QA + MCP`
+2. `M8: Async Runtime + Release Automation` (domkniety)
 
 ## M8: Async Runtime + Release Automation
 
-Status M8: `aktywny`.
+Status M8: `domkniety`.
 
 ### Issue #45: Async translation dispatcher z kontrolowana wspolbieznoscia i rate-limit
 - Zakres:
@@ -76,7 +76,7 @@ Status M8: `aktywny`.
 
 ## M9: Literary Consistency + Assistive QA + MCP
 
-Status M9: `planowany` (start po stabilizacji M8).
+Status M9: `aktywny`.
 
 ### Issue #50: Global Entity Glossary (slownik bytow i nazw wlasnych)
 - Zakres:

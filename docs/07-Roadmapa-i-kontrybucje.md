@@ -11,8 +11,8 @@
 - `M6`: domkniete (diff-aware retranslation + semantic diff gate + raport changed/reused/retranslated + auto-findings QA).
 - Increment Async I/O: wdrozony bezpieczny etap preflight (`Health check I/O` providerow + `Health check all (async)` pluginow), pelny async dispatch translacji pozostaje kolejnym krokiem.
 - `M3-M7`: issue i milestone na GitHub domkniete (cleanup statusow wykonany).
-- `M8`: uruchomione (otwarte issue: `#45`, `#46`, `#47`, `#48`, `#49`).
-- `M9`: zaplanowane (issue: `#50`, `#51`, `#52`, `#53`, `#54`).
+- `M8`: domkniete na GitHub (issue: `#45`, `#46`, `#47`, `#48`, `#49` sa zamkniete; milestone zamkniety).
+- `M9`: aktywne (issue: `#50`, `#51`, `#52`, `#53`, `#54`).
 
 ## 7.1. Priorytety techniczne
 
@@ -78,13 +78,13 @@ Jesli projekt oszczedza czas:
 - mniejsza liczba problemow z konfiguracja,
 - szybszy onboarding nowego urzadzenia.
 
-## 7.8. Kolejne milestone'y (aktywny plan)
+## 7.8. Kolejne milestone'y (M8 domkniete, M9 aktywne)
 
-1. `M8#45`: pelny async dispatch translacji (kontrolowana wspolbieznosc + rate-limit).
-2. `M8#46`: mocniejsze typowanie i walidacja kontraktow runtime.
-3. `M8#47`: automatyzacja release notes (CHANGELOG + metryki runtime).
-4. `M8#48`: telemetryczny health-check z historia i trendami.
-5. `M8#49`: konfigurowalne language guards dla dowolnego jezyka docelowego.
+1. `M8#45`: DONE.
+2. `M8#46`: DONE.
+3. `M8#47`: DONE.
+4. `M8#48`: DONE.
+5. `M8#49`: DONE.
 6. `M9#50`: Global Entity Glossary (spojnosc nazw w calym woluminie i serii).
 7. `M9#51`: Confidence + Risk Scoring (flagowanie segmentow do recenzji).
 8. `M9#52`: Dynamic Token Balancing (lepszy koszt/czas dla dialogow i miksu segmentow).
