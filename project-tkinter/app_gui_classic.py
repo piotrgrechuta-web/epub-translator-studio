@@ -3906,6 +3906,13 @@ class TranslatorGUI:
         return False, msg
 
     @staticmethod
+    def _first_missing_label(values: List[Tuple[str, str]]) -> Optional[str]:
+        for label, raw in values:
+            if not raw:
+                return label
+        return None
+
+    @staticmethod
     def _first_invalid_int_label(values: List[Tuple[str, str]]) -> Optional[str]:
         for label, raw in values:
             try:
@@ -3924,15 +3931,14 @@ class TranslatorGUI:
         return None
 
     def _validate(self) -> Optional[str]:
-        required = [
+        missing_required = self._first_missing_label([
             ("WejÄąâ€şciowy EPUB", self.input_epub_var.get().strip()),
             ("WyjÄąâ€şciowy EPUB", self.output_epub_var.get().strip()),
             ("Prompt", self.prompt_var.get().strip()),
             ("Model", self.model_var.get().strip()),
-        ]
-        for label, val in required:
-            if not val:
-                return f"Brak pola: {label}"
+        ])
+        if missing_required is not None:
+            return f"Brak pola: {missing_required}"
 
         in_file = Path(self.input_epub_var.get().strip())
         if not in_file.exists():
