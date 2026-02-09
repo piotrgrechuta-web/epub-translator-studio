@@ -14,8 +14,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from runtime_core import RunOptions, build_run_command  # noqa: E402
 from app_gui_classic import parse_epubcheck_findings  # noqa: E402
 from project_db import ProjectDB  # noqa: E402
-from text_preserve import set_text_preserving_inline  # noqa: E402
-from translation_engine import SegmentLedger, seed_segment_ledger_from_epub  # noqa: E402
+from text_preserve import set_text_preserving_inline, tokenize_inline_markup, apply_tokenized_inline_markup  # noqa: E402
+from translation_engine import SegmentLedger, seed_segment_ledger_from_epub, validate_entity_integrity  # noqa: E402
 
 
 def _make_epub(tmp_path: Path) -> Path:
@@ -109,6 +109,62 @@ def test_text_preserve_keeps_nested_inline_tags() -> None:
     assert bold.getparent() is italic
     as_text = etree.tostring(root, encoding="unicode", method="text")
     assert as_text == "X Y Z"
+
+
+def test_tokenize_inline_markup_supports_nested_chips_roundtrip() -> None:
+    root = etree.fromstring(b"<p>A <i>very <b>deep</b></i> example.</p>")
+    text, token_map = tokenize_inline_markup(root)
+    assert "[[TAG001]]" in text
+    assert len(token_map) >= 4
+    updated = text.replace("very", "mega").replace("example", "sample")
+    apply_tokenized_inline_markup(root, updated, token_map)
+    out = etree.tostring(root, encoding="unicode", method="xml")
+    assert "<i>" in out and "</i>" in out
+    assert "<b>" in out and "</b>" in out
+    assert "mega" in out
+    assert "sample" in out
+
+
+def _make_entity_epub(tmp_path: Path, *, chapter_text: str, name: str) -> Path:
+    epub_path = tmp_path / name
+    opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <manifest>
+    <item id="ch1" href="Text/ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="ch1"/>
+  </spine>
+</package>
+"""
+    xhtml = f"""<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <body>
+    <p>{chapter_text}</p>
+  </body>
+</html>
+"""
+    container = """<?xml version="1.0" encoding="utf-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+"""
+    with zipfile.ZipFile(epub_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("META-INF/container.xml", container)
+        zf.writestr("OPS/content.opf", opf)
+        zf.writestr("OPS/Text/ch1.xhtml", xhtml)
+    return epub_path
+
+
+def test_validate_entity_integrity_detects_entity_drop(tmp_path: Path) -> None:
+    inp = _make_entity_epub(tmp_path, chapter_text="A&shy;B&nbsp;C", name="in.epub")
+    out = _make_entity_epub(tmp_path, chapter_text="ABC", name="out.epub")
+    ok, report, msg = validate_entity_integrity(inp, out)
+    assert ok is False
+    assert report["delta_soft_hyphen"] < 0 or report["delta_nbsp"] < 0
+    assert "ENTITY-INTEGRITY" in msg
 
 
 def test_build_run_command_includes_run_step() -> None:

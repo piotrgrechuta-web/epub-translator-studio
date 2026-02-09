@@ -5,7 +5,7 @@ Status:
 - `M2 wdrozone` w kodzie i CI (2026-02-08),
 - `M3 zamrozone`: blokada po stronie GitHub Wiki backend (Issue 7 odlozone),
 - `M4 domkniete`: memory-first translation (cache + decision memory + adaptive prompting), z domknietymi metrykami ledgera/retry/timeout i eksportem release notes,
-- `M5 plan zatwierdzony`: EPUB-aware segmentacja i integralnosc markup (`&shy;`, inline tags),
+- `M5 zrealizowane`: EPUB-aware segmentacja i integralnosc markup (`&shy;`, inline tags),
 - `M6 plan zatwierdzony`: diff-aware retranslation + semantic diff gate do recenzji,
 - `M7 w realizacji`: wdrozony szkielet serii (project->series, baza serii, manager terminow, merge glosariusza).
 
@@ -160,7 +160,7 @@ Status: `zrealizowane`.
 
 ## M5: EPUB-Aware Segmentation + Markup Integrity
 
-Status M5: `plan`.
+Status M5: `zrealizowane`.
 
 ### Issue #28: EPUB-aware segmentacja (dialogi, cytaty, inline tags)
 - Zakres:
@@ -172,14 +172,11 @@ Status M5: `plan`.
   - testy parsera przechodza dla przypadkow dialog/cytat/inline,
   - output zachowuje poprawnosc renderingu.
 
-Status:
-- `czesc wdrozona`:
+Status: `zrealizowane`:
 1. edytor klasyczny ma tokeny inline (`[[TAG###]]`) z blokada modyfikacji tagow,
-2. zapis segmentu nie splaszcza juz struktury inline XHTML.
-3. dodano regresyjny test nested-inline (`test_text_preserve_keeps_nested_inline_tags`).
-- `do domkniecia`:
-1. tokenizacja na poziomie nested-inline chips z granularna edycja tylko tekstu miedzy tokenami,
-2. dodatkowe testy regresji dla bardziej zlozonych kombinacji nested inline tags.
+2. tokenizacja dziala na poziomie nested-inline chips (open/close) z granularna edycja tylko tekstu miedzy tokenami,
+3. zapis segmentu nie splaszcza struktury inline XHTML,
+4. dodano dodatkowe testy regresji nested-inline (roundtrip tokenow).
 
 ### Issue #33: Ochrona `&shy;` i encji typograficznych
 - Zakres:
@@ -190,6 +187,10 @@ Status:
   - brak utraty `&shy;` po runie,
   - automatyczny test integralnosci encji przechodzi,
   - brak regresji czytelnosci na malych ekranach czytnikow.
+Status: `zrealizowane`:
+1. walidator integralnosci encji porownuje przed/po runie (`&shy;`, `&nbsp;` i warianty numeryczne/Unicode),
+2. raport roznic encji jest emitowany w logu runtime (`[ENTITY-INTEGRITY]`),
+3. test regresyjny wykrywa utrate encji.
 
 ## M6: Smart Retranslation + Semantic Diff QA
 
@@ -257,10 +258,9 @@ Status:
 
 1. `M4` utrzymanie i stabilizacja po wdrozeniu.
 2. Domkniecie `M7 / Issue 31` (style rules + lorebook + versioning).
-3. `M5` (segmentacja EPUB + integralnosc markup).
-4. `M6` (diff-aware + semantic diff gate).
-5. `M7 / Issue 32` (skalowanie batch + opcjonalny fine-tuning).
-6. `M3 / Issue 7` (Wiki backend + Home + sidebar) dopiero po odmrozeniu.
+3. `M6` (diff-aware + semantic diff gate).
+4. `M7 / Issue 32` (skalowanie batch + opcjonalny fine-tuning).
+5. `M3 / Issue 7` (Wiki backend + Home + sidebar) dopiero po odmrozeniu.
 
 ## Definicja publikacji milestone
 

@@ -1134,6 +1134,13 @@ class ValidationTotals:
     hard_errors: int = 0
 
 
+@dataclass
+class EntityStats:
+    soft_hyphen: int = 0
+    nbsp: int = 0
+    files_checked: int = 0
+
+
 class TranslationMemory:
     def __init__(self, db_path: Path, project_id: Optional[int] = None):
         self.db_path = db_path
@@ -1817,6 +1824,56 @@ def compute_project_totals(
         )
 
 
+def _count_entity_forms(text: str, forms: Tuple[str, ...]) -> int:
+    src = str(text or "")
+    return sum(src.count(x) for x in forms)
+
+
+def collect_entity_stats(epub_path: Path) -> EntityStats:
+    stats = EntityStats()
+    if not epub_path.exists():
+        return stats
+    try:
+        with zipfile.ZipFile(epub_path, "r") as zin:
+            for name in zin.namelist():
+                low = str(name or "").lower()
+                if not (low.endswith(".xhtml") or low.endswith(".html") or low.endswith(".htm")):
+                    continue
+                raw = zin.read(name)
+                text = decode_bytes(raw)
+                stats.files_checked += 1
+                stats.soft_hyphen += _count_entity_forms(text, ("&shy;", "&#173;", "&#xAD;", "&#xad;", "\u00ad"))
+                stats.nbsp += _count_entity_forms(text, ("&nbsp;", "&#160;", "&#xA0;", "&#xa0;", "\u00a0"))
+    except Exception:
+        return stats
+    return stats
+
+
+def validate_entity_integrity(input_epub: Path, output_epub: Path) -> Tuple[bool, Dict[str, int], str]:
+    before = collect_entity_stats(input_epub)
+    after = collect_entity_stats(output_epub)
+    soft_delta = int(after.soft_hyphen - before.soft_hyphen)
+    nbsp_delta = int(after.nbsp - before.nbsp)
+    ok = soft_delta >= 0 and nbsp_delta >= 0
+    report = {
+        "before_soft_hyphen": int(before.soft_hyphen),
+        "after_soft_hyphen": int(after.soft_hyphen),
+        "delta_soft_hyphen": soft_delta,
+        "before_nbsp": int(before.nbsp),
+        "after_nbsp": int(after.nbsp),
+        "delta_nbsp": nbsp_delta,
+        "files_checked_before": int(before.files_checked),
+        "files_checked_after": int(after.files_checked),
+    }
+    msg = (
+        "[ENTITY-INTEGRITY] "
+        f"soft_hyphen {before.soft_hyphen}->{after.soft_hyphen} (delta={soft_delta}), "
+        f"nbsp {before.nbsp}->{after.nbsp} (delta={nbsp_delta}), "
+        f"files {before.files_checked}->{after.files_checked}"
+    )
+    return ok, report, msg
+
+
 def validate_translated_epub(
     epub_path: Path,
     block_tags: Tuple[str, ...],
@@ -2286,6 +2343,11 @@ def translate_epub(
     except Exception:
         pass
 
+    entity_ok, entity_report, entity_msg = validate_entity_integrity(input_epub, written_to)
+    print(entity_msg)
+    if not entity_ok:
+        print("[ENTITY-WARN] Detected potential entity loss for &shy; or &nbsp;.")
+
     print("\n=== KONIEC ===")
     print(f"  Nowe tłumaczenia: {global_new}")
     print(f"  Segmenty łącznie: {global_total}")
@@ -2294,6 +2356,11 @@ def translate_epub(
     if global_ledger_reused > 0:
         print(f"  Ledger reuse:     {global_ledger_reused}")
     print(f"  Output EPUB:      {written_to}")
+    print(
+        "  Entity check:     "
+        f"shy(delta={entity_report['delta_soft_hyphen']}), "
+        f"nbsp(delta={entity_report['delta_nbsp']})"
+    )
     if cache_path:
         print(f"  Cache:            {cache_path}")
     if debug_dir is not None:

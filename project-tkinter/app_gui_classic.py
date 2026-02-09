@@ -50,7 +50,7 @@ from runtime_core import (
     list_ollama_models as core_list_ollama_models,
 )
 from series_store import SeriesStore, detect_series_hint
-from text_preserve import set_text_preserving_inline
+from text_preserve import set_text_preserving_inline, tokenize_inline_markup, apply_tokenized_inline_markup
 from ui_style import apply_app_theme
 
 APP_TITLE = "EPUB Translator Studio"
@@ -3931,19 +3931,7 @@ class TextEditorWindow:
         self._tooltips = install_tooltips(self.win, resolver)
 
     def _tokenize_inline_segment(self, el: etree._Element) -> Tuple[str, Dict[str, str]]:
-        token_map: Dict[str, str] = {}
-        parts: List[str] = []
-        if el.text:
-            parts.append(str(el.text))
-        token_no = 1
-        for child in list(el):
-            token = f"[[TAG{token_no:03d}]]"
-            token_no += 1
-            token_map[token] = etree.tostring(child, encoding="unicode", method="xml", with_tail=False)
-            parts.append(token)
-            if child.tail:
-                parts.append(str(child.tail))
-        return "".join(parts), token_map
+        return tokenize_inline_markup(el)
 
     def _render_editor_text(self, text: str) -> None:
         self.editor.delete("1.0", "end")
@@ -4030,32 +4018,7 @@ class TextEditorWindow:
         )
 
     def _apply_tokenized_segment_text(self, el: etree._Element, text: str, token_map: Dict[str, str]) -> None:
-        for c in list(el):
-            el.remove(c)
-        el.text = None
-        pos = 0
-        prev_child: Optional[etree._Element] = None
-        for m in INLINE_TOKEN_RE.finditer(text):
-            plain = text[pos:m.start()]
-            if plain:
-                if prev_child is None:
-                    el.text = (el.text or "") + plain
-                else:
-                    prev_child.tail = (prev_child.tail or "") + plain
-            token = m.group(0)
-            child_raw = token_map.get(token)
-            if child_raw is None:
-                raise ValueError(f"Missing token payload: {token}")
-            child = etree.fromstring(child_raw.encode("utf-8"))
-            el.append(child)
-            prev_child = child
-            pos = m.end()
-        tail = text[pos:]
-        if tail:
-            if prev_child is None:
-                el.text = (el.text or "") + tail
-            else:
-                prev_child.tail = (prev_child.tail or "") + tail
+        apply_tokenized_inline_markup(el, text, token_map)
 
     def _on_chapter_selected(self) -> None:
         sel = self.chapter_box.curselection()
