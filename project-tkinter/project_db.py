@@ -23,9 +23,10 @@ else:
 
 
 DB_FILE = "translator_studio.db"
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 SCHEMA_META_KEY = "schema_version"
 SCHEMA_META_ALIAS_KEY = "db_version"
+PROVIDER_HEALTH_RETENTION_PER_PROVIDER = 200
 LOG = logging.getLogger(__name__)
 
 
@@ -266,10 +267,24 @@ class ProjectDB:
             )
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS provider_health_checks (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              provider TEXT NOT NULL,
+              state TEXT NOT NULL,
+              latency_ms INTEGER NOT NULL DEFAULT 0,
+              model_count INTEGER NOT NULL DEFAULT 0,
+              detail TEXT NOT NULL DEFAULT '',
+              created_at INTEGER NOT NULL
+            )
+            """
+        )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tm_source_hash ON tm_segments(source_hash)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tm_src_len ON tm_segments(LENGTH(source_text))")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_runs_project_started ON runs(project_id, started_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_series_name ON series(name)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_health_provider_created ON provider_health_checks(provider, created_at DESC)")
         self._ensure_migration_tracking_table(cur)
         project_cols = {str(r["name"]) for r in self.conn.execute("PRAGMA table_info(projects)").fetchall()}
         if "series_id" in project_cols:
@@ -715,6 +730,24 @@ class ProjectDB:
                 current = 8
                 self._set_schema_version_meta(current)
                 self.conn.commit()
+            elif current == 8:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS provider_health_checks (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      provider TEXT NOT NULL,
+                      state TEXT NOT NULL,
+                      latency_ms INTEGER NOT NULL DEFAULT 0,
+                      model_count INTEGER NOT NULL DEFAULT 0,
+                      detail TEXT NOT NULL DEFAULT '',
+                      created_at INTEGER NOT NULL
+                    )
+                    """
+                )
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_health_provider_created ON provider_health_checks(provider, created_at DESC)")
+                current = 9
+                self._set_schema_version_meta(current)
+                self.conn.commit()
             else:
                 raise RuntimeError(f"Nieznana sciezka migracji z wersji {current}")
         self._ensure_schema_integrity()
@@ -782,6 +815,19 @@ class ProjectDB:
             )
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS provider_health_checks (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              provider TEXT NOT NULL,
+              state TEXT NOT NULL,
+              latency_ms INTEGER NOT NULL DEFAULT 0,
+              model_count INTEGER NOT NULL DEFAULT 0,
+              detail TEXT NOT NULL DEFAULT '',
+              created_at INTEGER NOT NULL
+            )
+            """
+        )
 
         project_cols = {str(r["name"]) for r in self.conn.execute("PRAGMA table_info(projects)").fetchall()}
         if "source_lang" not in project_cols:
@@ -811,6 +857,7 @@ class ProjectDB:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_reviews_project_step ON qa_reviews(project_id, step, updated_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_series_name ON series(name)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_projects_series ON projects(series_id, updated_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_health_provider_created ON provider_health_checks(provider, created_at DESC)")
         self._set_schema_version_meta(SCHEMA_VERSION)
         self.conn.commit()
 
@@ -1044,6 +1091,154 @@ class ProjectDB:
             sev_label = "/".join(normalized)
             return False, f"Otwartych findings {sev_label}: {count}"
         return True, "Brak otwartych findings high-severity"
+
+    def record_provider_health_checks(self, rows: List[Dict[str, Any]]) -> int:
+        payload: List[Tuple[str, str, int, int, str, int]] = []
+        providers: set[str] = set()
+        now = _now_ts()
+        for raw in rows:
+            provider = str(raw.get("provider", "") or "").strip().lower()
+            state = str(raw.get("state", "fail") or "fail").strip().lower()
+            if not provider:
+                continue
+            if state not in {"ok", "fail", "skip"}:
+                state = "fail"
+            try:
+                latency_ms = max(0, int(raw.get("latency_ms", 0) or 0))
+            except Exception:
+                latency_ms = 0
+            try:
+                model_count = max(0, int(raw.get("model_count", 0) or 0))
+            except Exception:
+                model_count = 0
+            detail = str(raw.get("detail", "") or "").strip()
+            payload.append((provider, state, latency_ms, model_count, detail, now))
+            providers.add(provider)
+        if not payload:
+            return 0
+        self.conn.executemany(
+            """
+            INSERT INTO provider_health_checks(provider, state, latency_ms, model_count, detail, created_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            payload,
+        )
+        for provider in providers:
+            self._prune_provider_health_checks(
+                provider,
+                keep_last=PROVIDER_HEALTH_RETENTION_PER_PROVIDER,
+            )
+        self.conn.commit()
+        return len(payload)
+
+    def _prune_provider_health_checks(self, provider: str, *, keep_last: int) -> int:
+        safe_provider = str(provider or "").strip().lower()
+        if not safe_provider:
+            return 0
+        safe_keep = max(1, int(keep_last))
+        rows = list(
+            self.conn.execute(
+                """
+                SELECT id
+                FROM provider_health_checks
+                WHERE provider = ?
+                ORDER BY id DESC
+                LIMIT -1 OFFSET ?
+                """,
+                (safe_provider, safe_keep),
+            )
+        )
+        if not rows:
+            return 0
+        self.conn.executemany(
+            "DELETE FROM provider_health_checks WHERE id = ?",
+            [(int(row["id"]),) for row in rows],
+        )
+        return len(rows)
+
+    def list_provider_health_checks(self, provider: Optional[str] = None, limit: int = 50) -> List[sqlite3.Row]:
+        safe_limit = max(1, int(limit))
+        if provider:
+            return list(
+                self.conn.execute(
+                    """
+                    SELECT *
+                    FROM provider_health_checks
+                    WHERE provider = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (str(provider).strip().lower(), safe_limit),
+                )
+            )
+        return list(
+            self.conn.execute(
+                """
+                SELECT *
+                FROM provider_health_checks
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            )
+        )
+
+    def provider_health_summary(self, provider: str, *, window: int = 20) -> Dict[str, Any]:
+        safe_provider = str(provider or "").strip().lower()
+        if not safe_provider:
+            return {
+                "provider": "",
+                "window": 0,
+                "total": 0,
+                "ok": 0,
+                "fail": 0,
+                "skip": 0,
+                "failure_streak": 0,
+                "avg_latency_ms": 0,
+                "latest_state": "n/a",
+            }
+        safe_window = max(1, int(window))
+        rows = self.list_provider_health_checks(safe_provider, limit=safe_window)
+        ok = 0
+        fail = 0
+        skip = 0
+        latencies: List[int] = []
+        streak = 0
+        for idx, row in enumerate(rows):
+            state = str(row["state"] or "").strip().lower()
+            if state == "ok":
+                ok += 1
+            elif state == "skip":
+                skip += 1
+            else:
+                fail += 1
+            try:
+                latencies.append(max(0, int(row["latency_ms"] or 0)))
+            except Exception:
+                pass
+            if idx == 0:
+                if state == "fail":
+                    streak = 1
+                elif state == "ok":
+                    streak = 0
+            elif streak > 0:
+                if state == "fail":
+                    streak += 1
+                else:
+                    break
+        avg_latency = int(round(sum(latencies) / len(latencies))) if latencies else 0
+        latest_state = str(rows[0]["state"] or "n/a") if rows else "n/a"
+        return {
+            "provider": safe_provider,
+            "window": safe_window,
+            "total": len(rows),
+            "ok": ok,
+            "fail": fail,
+            "skip": skip,
+            "failure_streak": streak,
+            "avg_latency_ms": avg_latency,
+            "latest_state": latest_state,
+        }
 
     def _ensure_default_profiles(self) -> None:
         now = _now_ts()

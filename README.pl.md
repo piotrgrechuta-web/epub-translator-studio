@@ -12,6 +12,8 @@ KEYWORDS: `tlumacz EPUB`, `narzedzie do tlumaczenia EPUB`, `tlumaczenie AI`, `tl
 - zarzadzane migracje bazy z backupem i rollbackiem (`migration_runs`, startup notice, panel DB Update)
 - security-first gate'y runtime (twardy EPUBCheck + QA severity gate)
 - Smart Context (segmenty sasiednie) dla lepszej spojnosci form i odniesien
+- asynchroniczny preflight providerow (Ollama + Google) z telemetryka (`status/opoznienie/liczba modeli`) bez blokowania UI
+- opcjonalny async dispatch batchy translacji (`--io-concurrency`) z limitem wspolbieznosci i bezpiecznym resume z ledgera
 - Series Memory: termy serii, style rules, lorebook, historia zmian, import/export profilu serii
 - orkiestracja batcha serii jednym kliknieciem + raport zbiorczy (`series_batch_report_*.json/.md`)
 

@@ -16,6 +16,7 @@ ZaleĹĽnoĹ›ci:
 
 from __future__ import annotations
 
+import asyncio
 import argparse
 import datetime
 import hashlib
@@ -26,13 +27,14 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 import time
 import zipfile
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from html.entities import name2codepoint
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Protocol
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Protocol
 
 import requests
 from requests.exceptions import ReadTimeout, ConnectionError as ReqConnectionError, HTTPError
@@ -308,6 +310,7 @@ class GoogleClient:
             "x-goog-api-key": cfg.api_key.strip(),
         })
         self.base_url = "https://generativelanguage.googleapis.com"
+        self._throttle_lock = threading.Lock()
         self._next_allowed_ts = 0.0
         self._extra_throttle = 0.0
 
@@ -353,27 +356,32 @@ class GoogleClient:
 
     def _sleep_until_allowed(self) -> None:
         base = float(getattr(self.cfg, "min_interval_s", 0.0) or 0.0)
-        now = time.time()
-        wait = self._next_allowed_ts - now
+        with self._throttle_lock:
+            now = time.time()
+            wait = self._next_allowed_ts - now
+            extra = self._extra_throttle
         if wait > 0:
             time.sleep(wait)
         # dodatkowe throttling reagujÄ…ce na bĹ‚Ä™dy
-        if self._extra_throttle > 0:
-            time.sleep(self._extra_throttle)
+        if extra > 0:
+            time.sleep(extra)
 
     def _after_request(self) -> None:
         base = float(getattr(self.cfg, "min_interval_s", 0.0) or 0.0)
-        self._next_allowed_ts = time.time() + base
+        with self._throttle_lock:
+            self._next_allowed_ts = time.time() + base
 
     def _bump_throttle(self) -> None:
         # roĹ›nie do max_extra_throttle_s, skok throttle_step_s
         step = float(self.cfg.throttle_step_s or 0.5)
         max_t = float(self.cfg.max_extra_throttle_s or 10.0)
-        self._extra_throttle = min(max_t, self._extra_throttle + step)
+        with self._throttle_lock:
+            self._extra_throttle = min(max_t, self._extra_throttle + step)
 
     def _decay_throttle(self) -> None:
         # po sukcesie zmniejszamy throttling
-        self._extra_throttle = max(0.0, self._extra_throttle - (self.cfg.throttle_step_s or 0.5))
+        with self._throttle_lock:
+            self._extra_throttle = max(0.0, self._extra_throttle - (self.cfg.throttle_step_s or 0.5))
 
     def generate(self, prompt: str, model: str) -> str:
         url = self.base_url + f"/v1beta/{self._norm_model(model)}:generateContent"
@@ -655,6 +663,218 @@ def replace_inner_xml(el: etree._Element, new_inner: str) -> None:
         el.append(c)
 
 
+@dataclass
+class QuoteNormalizationResult:
+    text: str
+    replacements: int = 0
+    quote_replacements: int = 0
+    apostrophe_replacements: int = 0
+
+
+@dataclass
+class QuoteNormalizationStats:
+    segments_changed: int = 0
+    replacements: int = 0
+    quote_replacements: int = 0
+    apostrophe_replacements: int = 0
+
+    def absorb(self, *, before: str, result: QuoteNormalizationResult) -> None:
+        if result.text != str(before or ""):
+            self.segments_changed += 1
+        self.replacements += max(0, int(result.replacements))
+        self.quote_replacements += max(0, int(result.quote_replacements))
+        self.apostrophe_replacements += max(0, int(result.apostrophe_replacements))
+
+
+_QUOTE_DOUBLE_CHARS: Set[str] = {
+    '"',
+    "\u201c",
+    "\u201d",
+    "\u201e",
+    "\u201f",
+    "\u00ab",
+    "\u00bb",
+    "\u2039",
+    "\u203a",
+    "\u275d",
+    "\u275e",
+    "\u301d",
+    "\u301e",
+    "\uff02",
+}
+_QUOTE_SINGLE_CHARS: Set[str] = {
+    "'",
+    "\u2018",
+    "\u2019",
+    "\u201a",
+    "\u201b",
+    "`",
+    "\u00b4",
+    "\u02bc",
+    "\u02bb",
+    "\u02b9",
+    "\u02bd",
+}
+_QUOTE_OPEN_HINT_CHARS: Set[str] = set("([{-\u2013\u2014/:")
+_QUOTE_CLOSE_HINT_CHARS: Set[str] = set(".,!?;:)]}>\u2026")
+
+
+def _quote_profile_for_lang(lang: str) -> Tuple[List[Tuple[str, str]], str]:
+    key = str(lang or "").strip().lower()
+    profiles: Dict[str, Tuple[List[Tuple[str, str]], str]] = {
+        "pl": (
+            [("\u201e", "\u201d"), ("\u00ab", "\u00bb"), ("\u201a", "\u2019")],
+            "\u2019",
+        ),
+        "en": (
+            [("\u201c", "\u201d"), ("\u2018", "\u2019")],
+            "\u2019",
+        ),
+        "de": (
+            [("\u201e", "\u201c"), ("\u201a", "\u2018")],
+            "\u2019",
+        ),
+        "fr": (
+            [("\u00ab", "\u00bb"), ("\u2039", "\u203a"), ("\u201c", "\u201d")],
+            "\u2019",
+        ),
+        "es": (
+            [("\u00ab", "\u00bb"), ("\u201c", "\u201d"), ("\u2018", "\u2019")],
+            "\u2019",
+        ),
+        "pt": (
+            [("\u00ab", "\u00bb"), ("\u201c", "\u201d"), ("\u2018", "\u2019")],
+            "\u2019",
+        ),
+        "ro": (
+            [("\u201e", "\u201d"), ("\u00ab", "\u00bb"), ("\u2018", "\u2019")],
+            "\u2019",
+        ),
+    }
+    return profiles.get(key, profiles["en"])
+
+
+def normalize_quotes_and_apostrophes_inner_xml(
+    inner_xml_text: str,
+    *,
+    target_lang: str,
+) -> QuoteNormalizationResult:
+    src = str(inner_xml_text or "")
+    if not src:
+        return QuoteNormalizationResult(text=src)
+
+    pairs, apostrophe_char = _quote_profile_for_lang(target_lang)
+    n = len(src)
+    in_tag = [False] * n
+    inside_tag = False
+    for i, ch in enumerate(src):
+        if inside_tag:
+            in_tag[i] = True
+            if ch == ">":
+                inside_tag = False
+            continue
+        if ch == "<":
+            in_tag[i] = True
+            inside_tag = True
+
+    normalized_chars: List[str] = list(src)
+    for i, ch in enumerate(normalized_chars):
+        if in_tag[i]:
+            continue
+        if ch in _QUOTE_DOUBLE_CHARS:
+            normalized_chars[i] = '"'
+        elif ch in _QUOTE_SINGLE_CHARS:
+            normalized_chars[i] = "'"
+
+    def _prev_char(idx: int, *, skip_ws: bool) -> Optional[str]:
+        j = idx - 1
+        while j >= 0:
+            if in_tag[j]:
+                j -= 1
+                continue
+            c = normalized_chars[j]
+            if skip_ws and c.isspace():
+                j -= 1
+                continue
+            return c
+        return None
+
+    def _next_char(idx: int, *, skip_ws: bool) -> Optional[str]:
+        j = idx + 1
+        while j < n:
+            if in_tag[j]:
+                j += 1
+                continue
+            c = normalized_chars[j]
+            if skip_ws and c.isspace():
+                j += 1
+                continue
+            return c
+        return None
+
+    out: List[str] = []
+    close_stack: List[str] = []
+    replacements = 0
+    quote_replacements = 0
+    apostrophe_replacements = 0
+
+    for i, orig in enumerate(src):
+        if in_tag[i]:
+            out.append(orig)
+            continue
+
+        c = normalized_chars[i]
+        if c not in {'"', "'"}:
+            out.append(orig)
+            continue
+
+        prev_raw = _prev_char(i, skip_ws=False)
+        next_raw = _next_char(i, skip_ws=False)
+        if (
+            c == "'"
+            and prev_raw is not None
+            and next_raw is not None
+            and prev_raw.isalnum()
+            and next_raw.isalnum()
+        ):
+            repl = apostrophe_char
+            out.append(repl)
+            if repl != orig:
+                replacements += 1
+                apostrophe_replacements += 1
+            continue
+
+        open_hint = prev_raw is None or prev_raw.isspace() or prev_raw in _QUOTE_OPEN_HINT_CHARS
+        close_hint = next_raw is None or next_raw.isspace() or next_raw in _QUOTE_CLOSE_HINT_CHARS
+
+        if not close_stack:
+            should_open = True
+        elif open_hint and not close_hint:
+            should_open = True
+        else:
+            should_open = False
+
+        if should_open:
+            level = min(len(close_stack), len(pairs) - 1)
+            open_q, close_q = pairs[level]
+            close_stack.append(close_q)
+            repl = open_q
+        else:
+            repl = close_stack.pop() if close_stack else pairs[0][1]
+
+        out.append(repl)
+        if repl != orig:
+            replacements += 1
+            quote_replacements += 1
+
+    return QuoteNormalizationResult(
+        text="".join(out),
+        replacements=replacements,
+        quote_replacements=quote_replacements,
+        apostrophe_replacements=apostrophe_replacements,
+    )
+
+
 # ----------------------------
 # Prompt + parsing output (HYBRYDA)
 # ----------------------------
@@ -929,25 +1149,131 @@ def build_batch_context_notes(batch: List[Segment], *, max_total_chars: int = 70
     return note
 
 
-def chunk_segments(segments: List[Segment], batch_max_chars: int, batch_max_segs: int) -> Iterable[List[Segment]]:
+def _segment_text_len(seg: Segment) -> int:
+    txt = re.sub(r"\s+", " ", str(seg.plain or "")).strip()
+    return len(txt)
+
+
+def chunk_segments(
+    segments: List[Segment],
+    batch_max_chars: int,
+    batch_max_segs: int,
+    *,
+    short_merge_enabled: bool = True,
+    short_segment_max_chars: int = 60,
+    short_batch_target_chars: int = 1400,
+    short_batch_max_segs: int = 24,
+) -> Iterable[List[Segment]]:
+    hard_char_limit = max(1, int(batch_max_chars))
+    hard_seg_limit = max(1, int(batch_max_segs))
+    short_text_limit = max(1, int(short_segment_max_chars))
+    short_target_chars = min(hard_char_limit, max(128, int(short_batch_target_chars)))
+    short_soft_seg_limit = max(hard_seg_limit, int(short_batch_max_segs))
+
     batch: List[Segment] = []
     size = 0
+    batch_all_short = True
     for seg in segments:
         seg_size = len(seg.inner) + 64
-        if batch and ((size + seg_size) > batch_max_chars or len(batch) >= batch_max_segs):
-            yield batch
-            batch = []
-            size = 0
+        seg_is_short = _segment_text_len(seg) <= short_text_limit
+
+        if batch:
+            would_overflow_chars = (size + seg_size) > hard_char_limit
+            would_overflow_segs = len(batch) >= hard_seg_limit
+            allow_soft_short_merge = bool(
+                short_merge_enabled
+                and would_overflow_segs
+                and not would_overflow_chars
+                and batch_all_short
+                and seg_is_short
+                and len(batch) < short_soft_seg_limit
+                and size < short_target_chars
+                and (size + seg_size) <= short_target_chars
+            )
+            if would_overflow_chars or (would_overflow_segs and not allow_soft_short_merge):
+                yield batch
+                batch = []
+                size = 0
+                batch_all_short = True
 
         batch.append(seg)
         size += seg_size
+        batch_all_short = batch_all_short and seg_is_short
 
-        if len(batch) == 1 and seg_size > batch_max_chars:
+        if len(batch) == 1 and seg_size > hard_char_limit:
             yield batch
             batch = []
             size = 0
+            batch_all_short = True
     if batch:
         yield batch
+
+
+@dataclass
+class BatchDispatchResult:
+    batch_no: int
+    batch: List[Segment]
+    debug_prefix: str
+    mapping: Dict[str, str]
+    error: Optional[Exception] = None
+
+
+async def dispatch_translation_batches_async(
+    *,
+    jobs: List[Tuple[int, List[Segment], str]],
+    translate_fn: Callable[[List[Segment], str], Dict[str, str]],
+    io_concurrency: int,
+    dispatch_interval_s: float = 0.0,
+) -> List[BatchDispatchResult]:
+    """Dispatch batches concurrently with bounded parallelism and paced starts."""
+    if not jobs:
+        return []
+
+    sem = asyncio.Semaphore(max(1, int(io_concurrency)))
+    pace_lock = asyncio.Lock()
+    next_allowed_monotonic = 0.0
+    base_interval = max(0.0, float(dispatch_interval_s or 0.0))
+
+    async def _run_one(batch_no: int, batch: List[Segment], debug_prefix: str) -> BatchDispatchResult:
+        nonlocal next_allowed_monotonic
+        async with sem:
+            wait_s = 0.0
+            if base_interval > 0:
+                async with pace_lock:
+                    now = time.monotonic()
+                    if now < next_allowed_monotonic:
+                        wait_s = next_allowed_monotonic - now
+                        next_allowed_monotonic += base_interval
+                    else:
+                        next_allowed_monotonic = now + base_interval
+                if wait_s > 0:
+                    await asyncio.sleep(wait_s)
+            try:
+                mapping = await asyncio.to_thread(translate_fn, batch, debug_prefix)
+                return BatchDispatchResult(
+                    batch_no=batch_no,
+                    batch=batch,
+                    debug_prefix=debug_prefix,
+                    mapping=mapping,
+                    error=None,
+                )
+            except Exception as e:
+                return BatchDispatchResult(
+                    batch_no=batch_no,
+                    batch=batch,
+                    debug_prefix=debug_prefix,
+                    mapping={},
+                    error=e,
+                )
+
+    tasks = [
+        asyncio.create_task(_run_one(batch_no, batch, debug_prefix))
+        for batch_no, batch, debug_prefix in jobs
+    ]
+    out: List[BatchDispatchResult] = []
+    for fut in asyncio.as_completed(tasks):
+        out.append(await fut)
+    return out
 
 
 # ----------------------------
@@ -2241,6 +2567,12 @@ def translate_epub(
     semantic_gate_threshold: float = 0.58,
     semantic_gate_hard_threshold: float = 0.42,
     semantic_gate_min_chars: int = 24,
+    io_concurrency: int = 1,
+    quote_normalization: bool = True,
+    short_merge_enabled: bool = True,
+    short_segment_max_chars: int = 60,
+    short_batch_target_chars: int = 1400,
+    short_batch_max_segs: int = 24,
 ) -> None:
     source_lang = (source_lang or "en").strip().lower()
     target_lang = (target_lang or "pl").strip().lower()
@@ -2251,11 +2583,32 @@ def translate_epub(
     ctx_window = max(0, int(context_window))
     ctx_neighbor_max = max(24, int(context_neighbor_max_chars))
     ctx_per_seg_max = max(80, int(context_per_segment_max_chars))
+    effective_io_concurrency = max(1, int(io_concurrency or 1))
+    short_merge_short_limit = max(1, int(short_segment_max_chars))
+    short_merge_target_chars = max(128, int(short_batch_target_chars))
+    short_merge_seg_limit = max(1, int(short_batch_max_segs))
     if ctx_window > 0:
         print(
             "[SMART-CONTEXT] "
             f"window={ctx_window} neighbor_max={ctx_neighbor_max} per_seg_max={ctx_per_seg_max}"
         )
+    if effective_io_concurrency > 1:
+        print(
+            "[ASYNC-DISPATCH] "
+            f"provider={provider} io_concurrency={effective_io_concurrency} "
+            f"dispatch_interval={max(0.0, float(sleep_s or 0.0)):g}s"
+        )
+    if short_merge_enabled:
+        print(
+            "[SHORT-MERGE] "
+            f"short_segment_max_chars={short_merge_short_limit} "
+            f"short_batch_target_chars={short_merge_target_chars} "
+            f"short_batch_max_segs={short_merge_seg_limit}"
+        )
+    else:
+        print("[SHORT-MERGE] disabled")
+    if not quote_normalization:
+        print("[QUOTE-NORM] disabled")
     base_prompt = base_prompt.strip() + "\n\n" + build_language_instruction(source_lang, target_lang)
     model = llm.resolve_model()
     cache = load_cache(cache_path)
@@ -2307,6 +2660,7 @@ def translate_epub(
     global_retranslated = 0
     global_changed_retranslated = 0
     semantic_findings: List[Dict[str, Any]] = []
+    quote_stats = QuoteNormalizationStats()
 
     print("\n=== POSTÄP GLOBALNY (CAĹY EPUB) ===")
     print(f"  Segmenty Ĺ‚Ä…cznie:     {global_total}")
@@ -2331,6 +2685,16 @@ def translate_epub(
         if extra:
             msg += f" | {extra}"
         print(msg)
+
+    def _normalize_translated_inner(text: str) -> str:
+        if not quote_normalization:
+            return str(text or "")
+        result = normalize_quotes_and_apostrophes_inner_xml(
+            str(text or ""),
+            target_lang=target_lang,
+        )
+        quote_stats.absorb(before=str(text or ""), result=result)
+        return result.text
 
     with zipfile.ZipFile(working_input, "r") as zin:
         opf_path = find_opf_path(zin)
@@ -2404,13 +2768,21 @@ def translate_epub(
                         print(f"  [LANG-GUARD] Ignoruje cache (wyglada na EN): {sid}")
                         segs.append(Segment(idx=i, el=el, seg_id=sid, inner=seg_inner, plain=seg_plain))
                         continue
-                    replace_inner_xml(el, tr_cached_exact)
+                    tr_cached_exact_norm = _normalize_translated_inner(tr_cached_exact)
+                    replace_inner_xml(el, tr_cached_exact_norm)
                     chapter_cache += 1
                     global_reused += 1
                     if segment_ledger is not None:
                         if ledger_status != "COMPLETED":
                             global_done += 1
-                        segment_ledger.mark_completed(chapter_path, sid, seg_plain, tr_cached_exact, provider="cache", model=model)
+                        segment_ledger.mark_completed(
+                            chapter_path,
+                            sid,
+                            seg_plain,
+                            tr_cached_exact_norm,
+                            provider="cache",
+                            model=model,
+                        )
                 elif diff_aware and tr_cached_prefix is not None:
                     global_changed += 1
                     chapter_prev_map[sid] = tr_cached_prefix
@@ -2420,27 +2792,49 @@ def translate_epub(
                         print(f"  [LANG-GUARD] Ignoruje cache-prefix (wyglada na EN): {sid}")
                         segs.append(Segment(idx=i, el=el, seg_id=sid, inner=seg_inner, plain=seg_plain))
                         continue
-                    replace_inner_xml(el, tr_cached_prefix)
+                    tr_cached_prefix_norm = _normalize_translated_inner(tr_cached_prefix)
+                    replace_inner_xml(el, tr_cached_prefix_norm)
                     chapter_cache += 1
                     global_reused += 1
                     if segment_ledger is not None:
                         if ledger_status != "COMPLETED":
                             global_done += 1
-                        segment_ledger.mark_completed(chapter_path, sid, seg_plain, tr_cached_prefix, provider="cache", model=model)
+                        segment_ledger.mark_completed(
+                            chapter_path,
+                            sid,
+                            seg_plain,
+                            tr_cached_prefix_norm,
+                            provider="cache",
+                            model=model,
+                        )
                 elif ledger_done_inner is not None:
                     if polish_guard and not looks_like_target_language(ledger_done_inner, target_lang, profiles=guard_profiles):
                         segs.append(Segment(idx=i, el=el, seg_id=sid, inner=seg_inner, plain=seg_plain))
                         continue
-                    replace_inner_xml(el, ledger_done_inner)
-                    cache[sid] = ledger_done_inner
-                    cache.append(sid, ledger_done_inner)
+                    ledger_done_inner_norm = _normalize_translated_inner(ledger_done_inner)
+                    replace_inner_xml(el, ledger_done_inner_norm)
+                    cache[sid] = ledger_done_inner_norm
+                    cache.append(sid, ledger_done_inner_norm)
                     chapter_ledger += 1
                     global_ledger_reused += 1
                     global_reused += 1
                     if tm is not None:
-                        tm.add(seg_plain, ledger_done_inner, score=1.0, source_lang=source_lang, target_lang=target_lang)
+                        tm.add(
+                            seg_plain,
+                            ledger_done_inner_norm,
+                            score=1.0,
+                            source_lang=source_lang,
+                            target_lang=target_lang,
+                        )
                     if segment_ledger is not None:
-                        segment_ledger.mark_completed(chapter_path, sid, seg_plain, ledger_done_inner, provider="ledger", model=model)
+                        segment_ledger.mark_completed(
+                            chapter_path,
+                            sid,
+                            seg_plain,
+                            ledger_done_inner_norm,
+                            provider="ledger",
+                            model=model,
+                        )
                 else:
                     tm_hit = (
                         tm.lookup(
@@ -2456,12 +2850,20 @@ def translate_epub(
                         if polish_guard and not looks_like_target_language(tm_hit, target_lang, profiles=guard_profiles):
                             segs.append(Segment(idx=i, el=el, seg_id=sid, inner=seg_inner, plain=seg_plain))
                         else:
-                            replace_inner_xml(el, tm_hit)
+                            tm_hit_norm = _normalize_translated_inner(tm_hit)
+                            replace_inner_xml(el, tm_hit_norm)
                             chapter_tm += 1
                             global_done += 1
                             global_reused += 1
                             if segment_ledger is not None:
-                                segment_ledger.mark_completed(chapter_path, sid, seg_plain, tm_hit, provider="tm", model=model)
+                                segment_ledger.mark_completed(
+                                    chapter_path,
+                                    sid,
+                                    seg_plain,
+                                    tm_hit_norm,
+                                    provider="tm",
+                                    model=model,
+                                )
                     else:
                         segs.append(Segment(idx=i, el=el, seg_id=sid, inner=seg_inner, plain=seg_plain))
             if ctx_window > 0 and segs:
@@ -2503,7 +2905,128 @@ def translate_epub(
             changed = False
             chapter_new_done = 0
 
-            for batch_no, batch in enumerate(chunk_segments(segs, batch_max_chars, batch_max_segs), 1):
+            def _translate_batch_call(batch_local: List[Segment], debug_prefix_local: str) -> Dict[str, str]:
+                if provider == "google":
+                    return translate_batch_with_google_strategy(
+                        llm=llm,
+                        model=model,
+                        base_prompt=base_prompt,
+                        batch=batch_local,
+                        glossary_index=glossary_index,
+                        debug_dir=debug_dir,
+                        debug_prefix=debug_prefix_local,
+                        sleep_s=sleep_s,
+                    )
+                return translate_batch_with_ollama_strategy(
+                    llm=llm,
+                    model=model,
+                    base_prompt=base_prompt,
+                    batch=batch_local,
+                    glossary_index=glossary_index,
+                    debug_dir=debug_dir,
+                    debug_prefix=debug_prefix_local,
+                    sleep_s=sleep_s,
+                )
+
+            def _apply_batch_mapping(
+                batch_no_local: int,
+                batch_local: List[Segment],
+                debug_prefix_local: str,
+                mapping_local: Dict[str, str],
+            ) -> None:
+                nonlocal changed, chapter_new_done
+                nonlocal global_new, global_done, global_retranslated, global_changed_retranslated
+                for seg_local in batch_local:
+                    tr_inner = (mapping_local.get(seg_local.seg_id) or "").strip()
+                    if not tr_inner:
+                        raise RuntimeError(
+                            f"Pusty wynik tĹ‚umaczenia po fallbacku dla segmentu: {seg_local.seg_id}"
+                        )
+                    if polish_guard:
+                        tr_inner = ensure_target_language_translation(
+                            llm=llm,
+                            model=model,
+                            base_prompt=base_prompt,
+                            seg=seg_local,
+                            translated_inner=tr_inner,
+                            target_lang=target_lang,
+                            guard_profiles=guard_profiles,
+                            glossary_index=glossary_index,
+                            debug_dir=debug_dir,
+                            debug_prefix=debug_prefix_local,
+                        )
+                    tr_inner = _normalize_translated_inner(tr_inner)
+                    if segment_ledger is not None:
+                        segment_ledger.mark_completed(
+                            chapter_path,
+                            seg_local.seg_id,
+                            seg_local.plain,
+                            tr_inner,
+                            provider=provider,
+                            model=model,
+                        )
+                    replace_inner_xml(seg_local.el, tr_inner)
+                    cache[seg_local.seg_id] = tr_inner
+                    cache.append(seg_local.seg_id, tr_inner)
+                    if tm is not None:
+                        tm.add(
+                            seg_local.plain,
+                            tr_inner,
+                            score=1.0,
+                            source_lang=source_lang,
+                            target_lang=target_lang,
+                        )
+                    global_new += 1
+                    global_done += 1
+                    global_retranslated += 1
+                    chapter_new_done += 1
+                    changed = True
+                    prev_text = chapter_prev_map.get(seg_local.seg_id)
+                    if semantic_gate_enabled and prev_text is not None:
+                        global_changed_retranslated += 1
+                        if max(len(prev_text.strip()), len(tr_inner.strip())) >= max(
+                            1, int(semantic_gate_min_chars)
+                        ):
+                            sem_score = semantic_similarity_score(prev_text, tr_inner)
+                            if sem_score < float(semantic_gate_threshold):
+                                severity = (
+                                    "error"
+                                    if sem_score < float(semantic_gate_hard_threshold)
+                                    else "warn"
+                                )
+                                semantic_findings.append(
+                                    {
+                                        "chapter_path": chapter_path,
+                                        "segment_index": int(seg_local.idx),
+                                        "segment_id": seg_local.seg_id,
+                                        "severity": severity,
+                                        "message": (
+                                            f"Semantic drift score={sem_score:.3f} "
+                                            f"(threshold={float(semantic_gate_threshold):.3f}, hard={float(semantic_gate_hard_threshold):.3f})"
+                                        ),
+                                    }
+                                )
+                _print_global_progress(
+                    chapter_path,
+                    extra=(
+                        f"spine {spine_idx}/{spine_total} | batch {batch_no_local} | "
+                        f"nowe w pliku: {chapter_new_done}/{chapter_new_total}"
+                    ),
+                )
+
+            batch_jobs: List[Tuple[int, List[Segment], str]] = []
+            for batch_no, batch in enumerate(
+                chunk_segments(
+                    segs,
+                    batch_max_chars,
+                    batch_max_segs,
+                    short_merge_enabled=short_merge_enabled,
+                    short_segment_max_chars=short_merge_short_limit,
+                    short_batch_target_chars=short_merge_target_chars,
+                    short_batch_max_segs=short_merge_seg_limit,
+                ),
+                1,
+            ):
                 debug_prefix = f"{Path(chapter_path).stem}_b{batch_no:04d}"
                 batch_first_idx = batch[0].idx if batch else -1
                 batch_last_idx = batch[-1].idx if batch else -1
@@ -2513,7 +3036,6 @@ def translate_epub(
                     f"batch {batch_no} | segs={len(batch)} | idx={batch_first_idx}-{batch_last_idx} | chars~{batch_chars}",
                     flush=True,
                 )
-
                 if segment_ledger is not None:
                     for s in batch:
                         segment_ledger.mark_processing(
@@ -2523,96 +3045,80 @@ def translate_epub(
                             provider=provider,
                             model=model,
                         )
-                try:
-                    if provider == "google":
-                        mapping = translate_batch_with_google_strategy(
-                            llm=llm, model=model, base_prompt=base_prompt,
-                            batch=batch, glossary_index=glossary_index,
-                            debug_dir=debug_dir, debug_prefix=debug_prefix,
-                            sleep_s=sleep_s,
-                        )
-                    else:
-                        mapping = translate_batch_with_ollama_strategy(
-                            llm=llm, model=model, base_prompt=base_prompt,
-                            batch=batch, glossary_index=glossary_index,
-                            debug_dir=debug_dir, debug_prefix=debug_prefix,
-                            sleep_s=sleep_s,
-                        )
-                except Exception as e:
-                    if segment_ledger is not None:
-                        msg = f"{type(e).__name__}: {e}"
-                        for s in batch:
-                            segment_ledger.mark_error(s.seg_id, msg)
-                    raise
+                batch_jobs.append((batch_no, batch, debug_prefix))
+
+            first_error: Optional[Exception] = None
+            if effective_io_concurrency > 1 and len(batch_jobs) > 1:
                 print(
-                    f"  [BATCH-DONE]  spine {spine_idx}/{spine_total} | batch {batch_no} | map={len(mapping)}",
+                    f"  [ASYNC-DISPATCH] chapter batches={len(batch_jobs)} "
+                    f"provider={provider} sem={effective_io_concurrency}",
                     flush=True,
                 )
-
-                # wstrzykniÄ™cie + cache
-                for s in batch:
-                    tr_inner = (mapping.get(s.seg_id) or "").strip()
-                    if not tr_inner:
-                        raise RuntimeError(f"Pusty wynik tĹ‚umaczenia po fallbacku dla segmentu: {s.seg_id}")
-                    if polish_guard:
-                        tr_inner = ensure_target_language_translation(
-                            llm=llm,
-                            model=model,
-                            base_prompt=base_prompt,
-                            seg=s,
-                            translated_inner=tr_inner,
-                            target_lang=target_lang,
-                            guard_profiles=guard_profiles,
-                            glossary_index=glossary_index,
-                            debug_dir=debug_dir,
-                            debug_prefix=debug_prefix,
-                        )
-                    if segment_ledger is not None:
-                        segment_ledger.mark_completed(
-                            chapter_path,
-                            s.seg_id,
-                            s.plain,
-                            tr_inner,
-                            provider=provider,
-                            model=model,
-                        )
-                    replace_inner_xml(s.el, tr_inner)
-                    cache[s.seg_id] = tr_inner
-                    cache.append(s.seg_id, tr_inner)
-                    if tm is not None:
-                        tm.add(s.plain, tr_inner, score=1.0, source_lang=source_lang, target_lang=target_lang)
-                    global_new += 1
-                    global_done += 1
-                    global_retranslated += 1
-                    chapter_new_done += 1
-                    changed = True
-                    prev_text = chapter_prev_map.get(s.seg_id)
-                    if semantic_gate_enabled and prev_text is not None:
-                        global_changed_retranslated += 1
-                        if max(len(prev_text.strip()), len(tr_inner.strip())) >= max(1, int(semantic_gate_min_chars)):
-                            sem_score = semantic_similarity_score(prev_text, tr_inner)
-                            if sem_score < float(semantic_gate_threshold):
-                                severity = "error" if sem_score < float(semantic_gate_hard_threshold) else "warn"
-                                semantic_findings.append(
-                                    {
-                                        "chapter_path": chapter_path,
-                                        "segment_index": int(s.idx),
-                                        "segment_id": s.seg_id,
-                                        "severity": severity,
-                                        "message": (
-                                            f"Semantic drift score={sem_score:.3f} "
-                                            f"(threshold={float(semantic_gate_threshold):.3f}, hard={float(semantic_gate_hard_threshold):.3f})"
-                                        ),
-                                    }
-                                )
-
-                _print_global_progress(
-                    chapter_path,
-                    extra=f"spine {spine_idx}/{spine_total} | batch {batch_no} | nowe w pliku: {chapter_new_done}/{chapter_new_total}"
+                batch_results = asyncio.run(
+                    dispatch_translation_batches_async(
+                        jobs=batch_jobs,
+                        translate_fn=_translate_batch_call,
+                        io_concurrency=effective_io_concurrency,
+                        dispatch_interval_s=max(0.0, float(sleep_s or 0.0)),
+                    )
                 )
-
-                if sleep_s > 0:
-                    time.sleep(sleep_s)
+                for res in sorted(batch_results, key=lambda x: x.batch_no):
+                    if res.error is not None:
+                        if segment_ledger is not None:
+                            msg = f"{type(res.error).__name__}: {res.error}"
+                            for s in res.batch:
+                                segment_ledger.mark_error(s.seg_id, msg)
+                        if first_error is None:
+                            first_error = res.error
+                        print(
+                            f"  [BATCH-FAIL]  spine {spine_idx}/{spine_total} | "
+                            f"batch {res.batch_no} | err={type(res.error).__name__}",
+                            flush=True,
+                        )
+                        continue
+                    print(
+                        f"  [BATCH-DONE]  spine {spine_idx}/{spine_total} | "
+                        f"batch {res.batch_no} | map={len(res.mapping)}",
+                        flush=True,
+                    )
+                    try:
+                        _apply_batch_mapping(
+                            batch_no_local=res.batch_no,
+                            batch_local=res.batch,
+                            debug_prefix_local=res.debug_prefix,
+                            mapping_local=res.mapping,
+                        )
+                    except Exception as e:
+                        if segment_ledger is not None:
+                            msg = f"{type(e).__name__}: {e}"
+                            for s in res.batch:
+                                segment_ledger.mark_error(s.seg_id, msg)
+                        if first_error is None:
+                            first_error = e
+                if first_error is not None:
+                    raise first_error
+            else:
+                for batch_no, batch, debug_prefix in batch_jobs:
+                    try:
+                        mapping = _translate_batch_call(batch, debug_prefix)
+                    except Exception as e:
+                        if segment_ledger is not None:
+                            msg = f"{type(e).__name__}: {e}"
+                            for s in batch:
+                                segment_ledger.mark_error(s.seg_id, msg)
+                        raise
+                    print(
+                        f"  [BATCH-DONE]  spine {spine_idx}/{spine_total} | batch {batch_no} | map={len(mapping)}",
+                        flush=True,
+                    )
+                    _apply_batch_mapping(
+                        batch_no_local=batch_no,
+                        batch_local=batch,
+                        debug_prefix_local=debug_prefix,
+                        mapping_local=mapping,
+                    )
+                    if sleep_s > 0:
+                        time.sleep(sleep_s)
 
             if changed:
                 out_bytes = etree.tostring(root, encoding="utf-8", xml_declaration=True, pretty_print=False)
@@ -2668,6 +3174,12 @@ def translate_epub(
         f"changed={global_changed} reused={global_reused} "
         f"retranslated={global_retranslated} changed_retranslated={global_changed_retranslated}"
     )
+    print(
+        "[QUOTE-NORM] "
+        f"locale={target_lang} segments_changed={quote_stats.segments_changed} "
+        f"replacements={quote_stats.replacements} "
+        f"quotes={quote_stats.quote_replacements} apostrophes={quote_stats.apostrophe_replacements}"
+    )
 
     print("\n=== KONIEC ===")
     print(f"  Nowe tĹ‚umaczenia: {global_new}")
@@ -2681,6 +3193,11 @@ def translate_epub(
         "  Entity check:     "
         f"shy(delta={entity_report['delta_soft_hyphen']}), "
         f"nbsp(delta={entity_report['delta_nbsp']})"
+    )
+    print(
+        "  Quote norm:       "
+        f"segments={quote_stats.segments_changed} replacements={quote_stats.replacements} "
+        f"quotes={quote_stats.quote_replacements} apostrophes={quote_stats.apostrophe_replacements}"
     )
     if cache_path:
         print(f"  Cache:            {cache_path}")
@@ -2754,9 +3271,20 @@ def main() -> int:
     ap.add_argument("--semantic-gate-threshold", type=float, default=0.58, help="Prog semantic diff gate (0..1).")
     ap.add_argument("--semantic-gate-hard-threshold", type=float, default=0.42, help="Prog hard severity semantic gate (0..1).")
     ap.add_argument("--semantic-gate-min-chars", type=int, default=24, help="Min znakow do oceny semantic diff.")
+    ap.add_argument("--no-quote-normalization", action="store_true", help="Wylacz locale-aware normalizacje cudzyslowow i apostrofow.")
+    ap.add_argument("--no-short-merge", action="store_true", help="Wylacz inteligentne laczenie bardzo krotkich segmentow.")
+    ap.add_argument("--short-segment-max-chars", type=int, default=60, help="Maksymalna dlugosc segmentu (tekst) dla short-merge.")
+    ap.add_argument("--short-batch-target-chars", type=int, default=1400, help="Docelowy limit znakow partii short-merge (hard cap to --batch-max-chars).")
+    ap.add_argument("--short-batch-max-segs", type=int, default=24, help="Miekki limit liczby segmentow partii short-merge.")
     ap.add_argument("--context-window", type=int, default=0, help="Liczba segmentow kontekstu przed i po kazdym segmencie.")
     ap.add_argument("--context-neighbor-max-chars", type=int, default=180, help="Max znakow na pojedynczy segment kontekstu.")
     ap.add_argument("--context-segment-max-chars", type=int, default=1200, help="Max znakow kontekstu przypisanych do jednego segmentu.")
+    ap.add_argument(
+        "--io-concurrency",
+        type=int,
+        default=1,
+        help="Liczba rownoleglych batchy I/O (1 = tryb sekwencyjny).",
+    )
 
     args = ap.parse_args()
     tags = tuple([t.strip() for t in args.tags.split(",") if t.strip()])
@@ -2868,6 +3396,12 @@ def main() -> int:
             semantic_gate_threshold=max(0.0, min(1.0, float(args.semantic_gate_threshold))),
             semantic_gate_hard_threshold=max(0.0, min(1.0, float(args.semantic_gate_hard_threshold))),
             semantic_gate_min_chars=max(1, int(args.semantic_gate_min_chars)),
+            io_concurrency=max(1, int(args.io_concurrency)),
+            quote_normalization=not bool(args.no_quote_normalization),
+            short_merge_enabled=not bool(args.no_short_merge),
+            short_segment_max_chars=max(1, int(args.short_segment_max_chars)),
+            short_batch_target_chars=max(128, int(args.short_batch_target_chars)),
+            short_batch_max_segs=max(1, int(args.short_batch_max_segs)),
         )
     finally:
         if segment_ledger is not None:

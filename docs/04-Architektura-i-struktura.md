@@ -57,5 +57,5 @@ Nowy przeplyw serii:
 - testy integracyjne runtime,
 - mocniejsze typowanie i walidacja kontraktow,
 - automatyzacja release notes,
-- telemetryjny health-check offline/online providerow.
+- pelny async pipeline requestow translacji (kontrolowana wspolbieznosc per provider/rate-limit),
 - rozszerzenie `series_store.py` o lorebook i reguly stylu per seria.

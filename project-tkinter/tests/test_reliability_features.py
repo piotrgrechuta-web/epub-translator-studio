@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 import time
 import zipfile
@@ -11,18 +12,24 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from runtime_core import RunOptions, build_run_command  # noqa: E402
+from runtime_core import RunOptions, build_run_command, validate_run_options  # noqa: E402
 from app_gui_classic import parse_epubcheck_findings  # noqa: E402
 from project_db import ProjectDB  # noqa: E402
 from text_preserve import set_text_preserving_inline, tokenize_inline_markup, apply_tokenized_inline_markup  # noqa: E402
 from translation_engine import (  # noqa: E402
+    Segment,
     SegmentLedger,
+    TranslationMemory,
+    build_batch_payload,
+    chunk_segments,
     seed_segment_ledger_from_epub,
+    translate_epub,
     validate_entity_integrity,
     semantic_similarity_score,
     load_language_guard_profiles,
     looks_like_target_language,
     build_context_hints,
+    normalize_quotes_and_apostrophes_inner_xml,
 )
 
 
@@ -58,6 +65,89 @@ def _make_epub(tmp_path: Path) -> Path:
         zf.writestr("OPS/content.opf", opf)
         zf.writestr("OPS/Text/ch1.xhtml", xhtml)
     return epub_path
+
+
+def test_async_io_dispatch_keeps_ledger_idempotent(tmp_path: Path) -> None:
+    class FakeBatchLLM:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def resolve_model(self) -> str:
+            return "fake-model"
+
+        def generate(self, prompt: str, model: str) -> str:
+            _ = model
+            self.calls += 1
+            chunks = re.findall(r"(<batch\b[\s\S]*?</batch>)", prompt, flags=re.IGNORECASE)
+            assert chunks
+            parser = etree.XMLParser(recover=True, huge_tree=True)
+            root = etree.fromstring(chunks[-1].encode("utf-8"), parser=parser)
+            seg_items = []
+            for seg in root.findall(".//{*}seg"):
+                sid = str(seg.get("id") or "").strip()
+                assert sid
+                seg_items.append((sid, f"PL::{sid}"))
+            return build_batch_payload(seg_items)
+
+    input_epub = _make_epub(tmp_path)
+    output_epub = tmp_path / "out.epub"
+    cache_path = tmp_path / "cache.jsonl"
+    db_path = tmp_path / "tm_ledger.db"
+    tm = None
+    ledger = None
+    llm = FakeBatchLLM()
+    try:
+        tm = TranslationMemory(db_path, project_id=19)
+        ledger = SegmentLedger(db_path, project_id=19, run_step="translate")
+        translate_epub(
+            input_epub=input_epub,
+            output_epub=output_epub,
+            base_prompt="Translate faithfully.",
+            llm=llm,
+            provider="google",
+            cache_path=cache_path,
+            block_tags=("p",),
+            batch_max_chars=200,
+            batch_max_segs=1,
+            sleep_s=0.01,
+            polish_guard=False,
+            tm=tm,
+            segment_ledger=ledger,
+            semantic_gate_enabled=False,
+            io_concurrency=2,
+        )
+        first_calls = llm.calls
+        assert first_calls >= 1
+        states = ledger.load_scope_states()
+        assert len(states) == 2
+        assert all(str(r["status"]) == "COMPLETED" for r in states.values())
+
+        translate_epub(
+            input_epub=input_epub,
+            output_epub=output_epub,
+            base_prompt="Translate faithfully.",
+            llm=llm,
+            provider="google",
+            cache_path=cache_path,
+            block_tags=("p",),
+            batch_max_chars=200,
+            batch_max_segs=1,
+            sleep_s=0.01,
+            polish_guard=False,
+            tm=tm,
+            segment_ledger=ledger,
+            semantic_gate_enabled=False,
+            io_concurrency=2,
+        )
+        assert llm.calls == first_calls
+        states2 = ledger.load_scope_states()
+        assert len(states2) == 2
+        assert all(str(r["status"]) == "COMPLETED" for r in states2.values())
+    finally:
+        if ledger is not None:
+            ledger.close()
+        if tm is not None:
+            tm.close()
 
 
 def test_segment_ledger_lifecycle_and_stale_reset(tmp_path: Path) -> None:
@@ -262,6 +352,68 @@ def test_language_guard_profiles_support_custom_language(tmp_path: Path) -> None
     )
 
 
+def test_quote_normalization_polish_nested_and_apostrophes() -> None:
+    src = "\"To jest \"cytat <i>w srodku</i>\" i O'Connor.\""
+    out = normalize_quotes_and_apostrophes_inner_xml(src, target_lang="pl")
+    assert out.text == "\u201eTo jest \u00abcytat <i>w srodku</i>\u00bb i O\u2019Connor.\u201d"
+    assert out.replacements >= 4
+    assert out.quote_replacements >= 3
+    assert out.apostrophe_replacements >= 1
+
+
+def test_quote_normalization_english_uses_curly_quotes() -> None:
+    src = "\"He said 'it's fine'.\""
+    out = normalize_quotes_and_apostrophes_inner_xml(src, target_lang="en")
+    assert out.text == "\u201cHe said \u2018it\u2019s fine\u2019.\u201d"
+
+
+def test_translate_epub_reports_quote_normalization(tmp_path: Path, capsys) -> None:
+    class FakeQuoteLLM:
+        def resolve_model(self) -> str:
+            return "fake-model"
+
+        def generate(self, prompt: str, model: str) -> str:
+            _ = model
+            chunks = re.findall(r"(<batch\b[\s\S]*?</batch>)", prompt, flags=re.IGNORECASE)
+            assert chunks
+            parser = etree.XMLParser(recover=True, huge_tree=True)
+            root = etree.fromstring(chunks[-1].encode("utf-8"), parser=parser)
+            seg_items = []
+            for seg in root.findall(".//{*}seg"):
+                sid = str(seg.get("id") or "").strip()
+                assert sid
+                seg_items.append((sid, "\"To jest \"cytat <i>w srodku</i>\" i O'Connor.\""))
+            return build_batch_payload(seg_items)
+
+    inp = _make_entity_epub(tmp_path, chapter_text="Alpha", name="q_in.epub")
+    outp = tmp_path / "q_out.epub"
+    cache_path = tmp_path / "q_cache.jsonl"
+    llm = FakeQuoteLLM()
+    translate_epub(
+        input_epub=inp,
+        output_epub=outp,
+        base_prompt="Translate faithfully.",
+        llm=llm,
+        provider="google",
+        cache_path=cache_path,
+        block_tags=("p",),
+        batch_max_chars=200,
+        batch_max_segs=1,
+        sleep_s=0.0,
+        polish_guard=False,
+        semantic_gate_enabled=False,
+    )
+
+    with zipfile.ZipFile(outp, "r") as zf:
+        text = zf.read("OPS/Text/ch1.xhtml").decode("utf-8", errors="replace")
+    assert "\u201eTo jest \u00abcytat <i>w srodku</i>\u00bb i O\u2019Connor.\u201d" in text
+
+    captured = capsys.readouterr()
+    assert "[QUOTE-NORM]" in captured.out
+    assert "segments_changed=" in captured.out
+    assert "apostrophes=" in captured.out
+
+
 def test_build_run_command_includes_run_step() -> None:
     opts = RunOptions(
         provider="ollama",
@@ -284,9 +436,13 @@ def test_build_run_command_includes_run_step() -> None:
         source_lang="en",
         target_lang="pl",
         run_step="edit",
+        io_concurrency="3",
         context_window="5",
         context_neighbor_max_chars="200",
         context_segment_max_chars="1500",
+        short_segment_max_chars="48",
+        short_batch_target_chars="900",
+        short_batch_max_segs="18",
     )
     cmd = build_run_command(["python", "-u", "translation_engine.py"], opts)
     assert "--run-step" in cmd
@@ -297,6 +453,147 @@ def test_build_run_command_includes_run_step() -> None:
     assert cmd[cmd.index("--context-window") + 1] == "5"
     assert "--context-neighbor-max-chars" in cmd
     assert "--context-segment-max-chars" in cmd
+    assert "--io-concurrency" in cmd
+    assert cmd[cmd.index("--io-concurrency") + 1] == "3"
+    assert "--short-segment-max-chars" in cmd
+    assert cmd[cmd.index("--short-segment-max-chars") + 1] == "48"
+    assert "--short-batch-target-chars" in cmd
+    assert cmd[cmd.index("--short-batch-target-chars") + 1] == "900"
+    assert "--short-batch-max-segs" in cmd
+    assert cmd[cmd.index("--short-batch-max-segs") + 1] == "18"
+
+
+def test_build_run_command_can_disable_short_merge() -> None:
+    opts = RunOptions(
+        provider="ollama",
+        input_epub="in.epub",
+        output_epub="out.epub",
+        prompt="prompt.txt",
+        model="llama3.1:8b",
+        batch_max_segs="6",
+        batch_max_chars="12000",
+        sleep="0",
+        timeout="300",
+        attempts="3",
+        backoff="5,15,30",
+        temperature="0.1",
+        num_ctx="8192",
+        num_predict="2048",
+        tags="p,li",
+        checkpoint="0",
+        debug_dir="debug",
+        source_lang="en",
+        target_lang="pl",
+        short_merge_enabled=False,
+    )
+    cmd = build_run_command(["python", "-u", "translation_engine.py"], opts)
+    assert "--no-short-merge" in cmd
+
+
+def test_build_run_command_includes_language_guard_config(tmp_path: Path) -> None:
+    in_epub = tmp_path / "in.epub"
+    out_epub = tmp_path / "out.epub"
+    prompt = tmp_path / "prompt.txt"
+    guard_cfg = tmp_path / "guards.json"
+    in_epub.write_text("x", encoding="utf-8")
+    prompt.write_text("prompt", encoding="utf-8")
+    guard_cfg.write_text('{"ro":{"special_chars":"abc","hint_words":["si"]}}', encoding="utf-8")
+    opts = RunOptions(
+        provider="ollama",
+        input_epub=str(in_epub),
+        output_epub=str(out_epub),
+        prompt=str(prompt),
+        model="llama3.1:8b",
+        batch_max_segs="6",
+        batch_max_chars="12000",
+        sleep="0",
+        timeout="300",
+        attempts="3",
+        backoff="5,15,30",
+        temperature="0.1",
+        num_ctx="8192",
+        num_predict="2048",
+        tags="p,li",
+        checkpoint="0",
+        debug_dir="debug",
+        source_lang="en",
+        target_lang="pl",
+        language_guard_config=str(guard_cfg),
+    )
+    cmd = build_run_command(["python", "-u", "translation_engine.py"], opts)
+    assert "--language-guard-config" in cmd
+    assert cmd[cmd.index("--language-guard-config") + 1] == str(guard_cfg)
+
+
+def test_validate_run_options_rejects_invalid_runtime_contract(tmp_path: Path) -> None:
+    in_epub = tmp_path / "in.epub"
+    prompt = tmp_path / "prompt.txt"
+    in_epub.write_text("x", encoding="utf-8")
+    prompt.write_text("prompt", encoding="utf-8")
+    opts = RunOptions(
+        provider="ollama",
+        input_epub=str(in_epub),
+        output_epub=str(tmp_path / "out.epub"),
+        prompt=str(prompt),
+        model="m",
+        batch_max_segs="0",
+        batch_max_chars="12000",
+        sleep="0",
+        timeout="300",
+        attempts="3",
+        backoff="5,15,30",
+        temperature="0.1",
+        num_ctx="8192",
+        num_predict="2048",
+        tags="p",
+        checkpoint="0",
+        debug_dir="debug",
+        source_lang="en",
+        target_lang="pl",
+        run_step="invalid",
+    )
+    err = validate_run_options(opts)
+    assert err is not None
+    assert "run_step" in err
+
+    opts.run_step = "translate"
+    err2 = validate_run_options(opts)
+    assert err2 is not None
+    assert "batch_max_segs" in err2
+
+
+def test_validate_run_options_rejects_invalid_language_guard_config(tmp_path: Path) -> None:
+    in_epub = tmp_path / "in.epub"
+    prompt = tmp_path / "prompt.txt"
+    cfg = tmp_path / "guards.json"
+    in_epub.write_text("x", encoding="utf-8")
+    prompt.write_text("prompt", encoding="utf-8")
+    cfg.write_text("[1,2,3]", encoding="utf-8")
+    opts = RunOptions(
+        provider="ollama",
+        input_epub=str(in_epub),
+        output_epub=str(tmp_path / "out.epub"),
+        prompt=str(prompt),
+        model="m",
+        batch_max_segs="1",
+        batch_max_chars="12000",
+        sleep="0",
+        timeout="300",
+        attempts="3",
+        backoff="5,15,30",
+        temperature="0.1",
+        num_ctx="8192",
+        num_predict="2048",
+        tags="p",
+        checkpoint="0",
+        debug_dir="debug",
+        source_lang="en",
+        target_lang="pl",
+        language_guard_config=str(cfg),
+    )
+    err = validate_run_options(opts)
+    assert err is not None
+    assert "root must be an object" in err
 
 
 def test_build_context_hints_uses_neighbor_window() -> None:
@@ -318,6 +615,44 @@ def test_build_context_hints_uses_neighbor_window() -> None:
     assert "Gamma three." in hints["s2"]
     assert "Beta two." in hints["s3"]
     assert "Delta four." in hints["s3"]
+
+
+def _mk_segment(idx: int, text: str) -> Segment:
+    el = etree.Element("p")
+    el.text = text
+    return Segment(idx=idx, el=el, seg_id=f"seg-{idx}", inner=text, plain=text)
+
+
+def test_chunk_segments_soft_merge_short_segments() -> None:
+    segs = [_mk_segment(i, "Hi.") for i in range(1, 9)]
+    chunks = list(
+        chunk_segments(
+            segs,
+            batch_max_chars=12000,
+            batch_max_segs=2,
+            short_merge_enabled=True,
+            short_segment_max_chars=12,
+            short_batch_target_chars=400,
+            short_batch_max_segs=10,
+        )
+    )
+    assert [len(ch) for ch in chunks] == [5, 3]
+
+
+def test_chunk_segments_respects_classic_limit_when_short_merge_disabled() -> None:
+    segs = [_mk_segment(i, "Hi.") for i in range(1, 9)]
+    chunks = list(
+        chunk_segments(
+            segs,
+            batch_max_chars=12000,
+            batch_max_segs=2,
+            short_merge_enabled=False,
+            short_segment_max_chars=12,
+            short_batch_target_chars=400,
+            short_batch_max_segs=10,
+        )
+    )
+    assert [len(ch) for ch in chunks] == [2, 2, 2, 2]
 
 
 def test_segment_ledger_seed_initializes_pending_and_tracks_completed(tmp_path: Path) -> None:

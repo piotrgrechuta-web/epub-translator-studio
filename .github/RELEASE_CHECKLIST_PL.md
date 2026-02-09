@@ -17,6 +17,9 @@
 
 ## 3) Release notes (obowiazkowe sekcje)
 
+- [ ] Wygenerowano draft release notes komenda:
+  - [ ] `python project-tkinter/scripts/generate_release_notes.py --output artifacts/release_notes.md --from-ref <prev_tag> --to-ref HEAD`
+- [ ] Workflow CI `Release Draft` opublikowal artefakt `release-notes-draft`.
 - [ ] `## Zmiany`
 - [ ] `## Ryzyka`
 - [ ] `## Migracja`

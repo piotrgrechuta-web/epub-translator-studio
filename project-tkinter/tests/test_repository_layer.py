@@ -8,7 +8,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from project_db import ProjectDB, SCHEMA_META_ALIAS_KEY, SCHEMA_META_KEY  # noqa: E402
+from project_db import (  # noqa: E402
+    PROVIDER_HEALTH_RETENTION_PER_PROVIDER,
+    ProjectDB,
+    SCHEMA_META_ALIAS_KEY,
+    SCHEMA_META_KEY,
+)
 from studio_repository import SQLiteStudioRepository  # noqa: E402
 
 
@@ -86,5 +91,58 @@ def test_sqlite_repository_queue_and_qa_counts(tmp_path: Path) -> None:
         )
         assert inserted == 1
         assert repo.count_open_qa_findings(pid) == 1
+    finally:
+        db.close()
+
+
+def test_provider_health_checks_record_and_summary(tmp_path: Path) -> None:
+    db = ProjectDB(tmp_path / "studio.db")
+    try:
+        inserted = db.record_provider_health_checks(
+            [
+                {"provider": "ollama", "state": "fail", "latency_ms": 42, "model_count": 0, "detail": "timeout"},
+                {"provider": "ollama", "state": "fail", "latency_ms": 35, "model_count": 0, "detail": "timeout"},
+                {"provider": "ollama", "state": "ok", "latency_ms": 18, "model_count": 12, "detail": "ok"},
+                {"provider": "google", "state": "skip", "latency_ms": 0, "model_count": 0, "detail": "missing key"},
+            ]
+        )
+        assert inserted == 4
+
+        rows = db.list_provider_health_checks("ollama", limit=10)
+        assert len(rows) == 3
+        summary = db.provider_health_summary("ollama", window=10)
+        assert summary["provider"] == "ollama"
+        assert summary["total"] == 3
+        assert summary["ok"] == 1
+        assert summary["fail"] == 2
+        assert summary["skip"] == 0
+        assert summary["latest_state"] == "ok"
+        assert summary["failure_streak"] == 0
+    finally:
+        db.close()
+
+
+def test_provider_health_retention_keeps_last_rows_per_provider(tmp_path: Path) -> None:
+    db = ProjectDB(tmp_path / "studio.db")
+    try:
+        payload = [
+            {
+                "provider": "ollama",
+                "state": "ok" if idx % 2 else "fail",
+                "latency_ms": idx,
+                "model_count": 1,
+                "detail": "",
+            }
+            for idx in range(PROVIDER_HEALTH_RETENTION_PER_PROVIDER + 35)
+        ]
+        inserted = db.record_provider_health_checks(payload)
+        assert inserted == len(payload)
+
+        rows = db.list_provider_health_checks("ollama", limit=PROVIDER_HEALTH_RETENTION_PER_PROVIDER + 100)
+        assert len(rows) == PROVIDER_HEALTH_RETENTION_PER_PROVIDER
+        newest_latency = int(rows[0]["latency_ms"])
+        oldest_latency = int(rows[-1]["latency_ms"])
+        assert newest_latency == len(payload) - 1
+        assert oldest_latency == 35
     finally:
         db.close()

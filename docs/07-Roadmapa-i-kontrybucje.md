@@ -9,6 +9,10 @@
 - `M4`: domkniete (ledger orchestration upfront + twardy gate EPUBCheck + tokenized inline editor + dashboard ledger metrics + stale widoczny pasek ledgera + presety promptow Gemini w GUI + telemetry retry/timeout + export metryk do release notes + alert progowy ledgera).
 - `M5`: domkniete (nested-inline chips w edytorze + dodatkowe testy regresji + walidator integralnosci `&shy;/&nbsp;` z raportem po runie).
 - `M6`: domkniete (diff-aware retranslation + semantic diff gate + raport changed/reused/retranslated + auto-findings QA).
+- Increment Async I/O: wdrozony bezpieczny etap preflight (`Health check I/O` providerow + `Health check all (async)` pluginow), pelny async dispatch translacji pozostaje kolejnym krokiem.
+- `M3-M7`: issue i milestone na GitHub domkniete (cleanup statusow wykonany).
+- `M8`: domkniete na GitHub (issue: `#45`, `#46`, `#47`, `#48`, `#49` sa zamkniete; milestone zamkniety).
+- `M9`: aktywne (issue: `#50`, `#51`, `#52`, `#53`, `#54`).
 
 ## 7.1. Priorytety techniczne
 
@@ -74,11 +78,18 @@ Jesli projekt oszczedza czas:
 - mniejsza liczba problemow z konfiguracja,
 - szybszy onboarding nowego urzadzenia.
 
-## 7.8. Kolejne milestone'y (po M1-M2, M3-M7 domkniete)
+## 7.8. Kolejne milestone'y (M8 domkniete, M9 aktywne)
 
-1. Stabilizacja i utrzymanie M4-M7 (bugfixy + ergonomia).
-2. Utrzymanie dokumentacji Wiki i synchronizacji z `docs/wiki`.
-3. Kolejny increment funkcjonalny po uzgodnieniu backlogu.
+1. `M8#45`: DONE.
+2. `M8#46`: DONE.
+3. `M8#47`: DONE.
+4. `M8#48`: DONE.
+5. `M8#49`: DONE.
+6. `M9#50`: Global Entity Glossary (spojnosc nazw w calym woluminie i serii).
+7. `M9#51`: Confidence + Risk Scoring (flagowanie segmentow do recenzji).
+8. `M9#52`: Dynamic Token Balancing (lepszy koszt/czas dla dialogow i miksu segmentow).
+9. `M9#53`: MCP Gateway read-only (kontekst projektu dla zewnetrznych modeli/agentow).
+10. `M9#54`: MCP write actions + audit gate (bezpieczna automatyzacja operacji zapisu).
 
 Zakres i kryteria `Done` sa utrzymywane w:
 - `docs/09-Backlog-do-uzgodnienia.md`

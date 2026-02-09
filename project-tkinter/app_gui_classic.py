@@ -47,8 +47,10 @@ from runtime_core import (
     RunOptions as CoreRunOptions,
     build_run_command as core_build_run_command,
     build_validation_command as core_build_validation_command,
+    gather_provider_health as core_gather_provider_health,
     list_google_models as core_list_google_models,
     list_ollama_models as core_list_ollama_models,
+    validate_run_options as core_validate_run_options,
 )
 from series_store import SeriesStore, detect_series_hint
 from text_preserve import set_text_preserving_inline, tokenize_inline_markup, apply_tokenized_inline_markup
@@ -67,7 +69,7 @@ PROMPT_PRESETS_FILE = Path(__file__).resolve().with_name("prompt_presets.json")
 GOOGLE_KEYRING_SERVICE = "epub-translator-studio"
 GOOGLE_KEYRING_USER = "google_api_key"
 EPUBCHECK_TIMEOUT_S = 120
-APP_RUNTIME_VERSION = "0.6.0"
+APP_RUNTIME_VERSION = "0.6.1"
 GLOBAL_PROGRESS_RE = re.compile(r"GLOBAL\s+(\d+)\s*/\s*(\d+)\s*\(([^)]*)\)\s*\|\s*(.*)")
 TOTAL_SEGMENTS_RE = re.compile(r"Segmenty\s+(?:Äąâ€šĂ„â€¦cznie|lacznie)\s*:\s*(\d+)", re.IGNORECASE)
 CACHE_SEGMENTS_RE = re.compile(r"Segmenty\s+z\s+cache\s*:\s*(\d+)", re.IGNORECASE)
@@ -101,6 +103,23 @@ def list_ollama_models(host: str, timeout_s: int = 20) -> List[str]:
 
 def list_google_models(api_key: str, timeout_s: int = 20) -> List[str]:
     return core_list_google_models(api_key=api_key, timeout_s=timeout_s)
+
+
+def gather_provider_health(
+    *,
+    ollama_host: str,
+    google_api_key: str,
+    timeout_s: int = 10,
+    include_ollama: bool = True,
+    include_google: bool = True,
+) -> Dict[str, Any]:
+    return core_gather_provider_health(
+        ollama_host=ollama_host,
+        google_api_key=google_api_key,
+        timeout_s=timeout_s,
+        include_ollama=include_ollama,
+        include_google=include_google,
+    )
 
 
 def quote_arg(arg: str) -> str:
@@ -762,6 +781,8 @@ class TranslatorGUI:
         self.context_window_var = tk.StringVar(value="0")
         self.context_neighbor_max_chars_var = tk.StringVar(value="180")
         self.context_segment_max_chars_var = tk.StringVar(value="1200")
+        self.io_concurrency_var = tk.StringVar(value="1")
+        self.language_guard_config_var = tk.StringVar()
         self.tooltip_mode_var = tk.StringVar(value=self.tooltip_mode)
         self.ui_language_var = tk.StringVar(value=self.i18n.lang)
         self.source_lang_var = tk.StringVar(value="en")
@@ -776,6 +797,7 @@ class TranslatorGUI:
         self.phase_var = tk.StringVar(value=self.tr("status.phase.wait", "Etap: oczekiwanie"))
         self.ledger_status_var = tk.StringVar(value=self.tr("status.ledger.none", "Ledger: no data"))
         self.run_metrics_var = tk.StringVar(value=self.tr("status.metrics.none", "Metryki runu: brak"))
+        self.health_trend_var = tk.StringVar(value=self.tr("status.health_trend.none", "Health trend: brak danych"))
         self.progress_value_var = tk.DoubleVar(value=0.0)
         self.global_done = 0
         self.global_total = 0
@@ -1379,23 +1401,43 @@ class TranslatorGUI:
         ttk.Label(card, text=self.tr("label.context_segment_max_chars", "Context max chars (segment):")).grid(row=6, column=4, sticky="w", padx=(12, 0), pady=(8, 0))
         ttk.Entry(card, textvariable=self.context_segment_max_chars_var, width=12).grid(row=6, column=5, sticky="w", pady=(8, 0))
 
-        ttk.Label(card, text=self.tr("label.tooltip_mode", "Tooltip mode:")).grid(row=7, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(card, text=self.tr("label.io_concurrency", "I/O concurrency:")).grid(row=7, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(card, textvariable=self.io_concurrency_var, width=12).grid(row=7, column=1, sticky="w", pady=(8, 0))
+
+        ttk.Label(card, text=self.tr("label.language_guard_config", "Language guard config (JSON):")).grid(row=8, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(card, textvariable=self.language_guard_config_var).grid(row=8, column=1, columnspan=4, sticky="ew", pady=(8, 0))
+
+        def pick_guard_cfg() -> None:
+            path = filedialog.askopenfilename(
+                title=self.tr("label.language_guard_config", "Language guard config (JSON):"),
+                initialdir=str(self.workdir),
+                filetypes=[("JSON", "*.json"), ("All", "*.*")],
+            )
+            if path:
+                self.language_guard_config_var.set(path)
+                self._update_command_preview()
+
+        ttk.Button(card, text=self.tr("button.choose", "Wybierz"), command=pick_guard_cfg, style="Secondary.TButton").grid(
+            row=8, column=5, sticky="w", padx=(8, 0), pady=(8, 0)
+        )
+
+        ttk.Label(card, text=self.tr("label.tooltip_mode", "Tooltip mode:")).grid(row=9, column=0, sticky="w", pady=(8, 0))
         tip_combo = ttk.Combobox(card, textvariable=self.tooltip_mode_var, state="readonly", width=14)
         tip_combo["values"] = ["hybrid", "short", "expert"]
-        tip_combo.grid(row=7, column=1, sticky="w", pady=(8, 0))
+        tip_combo.grid(row=9, column=1, sticky="w", pady=(8, 0))
         tip_combo.bind("<<ComboboxSelected>>", lambda _: self._on_tooltip_mode_change())
 
-        ttk.Label(card, text=self.tr("label.ui_language", "Jezyk UI:")).grid(row=7, column=2, sticky="w", padx=(12, 0), pady=(8, 0))
+        ttk.Label(card, text=self.tr("label.ui_language", "Jezyk UI:")).grid(row=9, column=2, sticky="w", padx=(12, 0), pady=(8, 0))
         ui_combo = ttk.Combobox(card, textvariable=self.ui_language_var, state="readonly", width=14)
         ui_combo["values"] = list(SUPPORTED_UI_LANGS.keys())
-        ui_combo.grid(row=7, column=3, sticky="w", pady=(8, 0))
+        ui_combo.grid(row=9, column=3, sticky="w", pady=(8, 0))
         ui_combo.bind("<<ComboboxSelected>>", lambda _: self._on_ui_language_change())
         ttk.Button(
             card,
             text=self.tr("button.ai_translate_gui", "AI: szkic tlumaczenia GUI"),
             command=self._ai_translate_ui_language,
             style="Secondary.TButton",
-        ).grid(row=7, column=4, columnspan=2, sticky="w", padx=(12, 0), pady=(8, 0))
+        ).grid(row=9, column=4, columnspan=2, sticky="w", padx=(12, 0), pady=(8, 0))
 
         for i in range(6):
             card.columnconfigure(i, weight=1)
@@ -1406,10 +1448,12 @@ class TranslatorGUI:
 
         self.model_combo = ttk.Combobox(card, textvariable=self.model_var, state="readonly")
         self.model_combo.grid(row=0, column=0, sticky="ew")
+        ttk.Button(card, text="Health check I/O", command=self._health_check_providers, style="Secondary.TButton").grid(row=0, column=2, padx=(8, 0))
         ttk.Button(card, text=self.tr("button.refresh_models", "OdÄąâ€şwieÄąÄ˝ listĂ„â„˘ modeli"), command=self._refresh_models, style="Secondary.TButton").grid(row=0, column=1, padx=(8, 0))
 
         self.model_status = ttk.Label(card, text="", style="Sub.TLabel")
-        self.model_status.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.model_status.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Label(card, textvariable=self.health_trend_var, style="Helper.TLabel").grid(row=2, column=0, columnspan=3, sticky="w", pady=(2, 0))
 
         card.columnconfigure(0, weight=1)
 
@@ -2988,6 +3032,8 @@ class TranslatorGUI:
             "use_cache": self.use_cache_var.get(),
             "use_glossary": self.use_glossary_var.get(),
             "checkpoint": self.checkpoint_var.get(),
+            "io_concurrency": self.io_concurrency_var.get(),
+            "language_guard_config": self.language_guard_config_var.get(),
             "tooltip_mode": self.tooltip_mode_var.get(),
             "ui_language": self.ui_language_var.get(),
             "source_lang": self.source_lang_var.get(),
@@ -3351,6 +3397,9 @@ class TranslatorGUI:
             self.prompt_var.set(str(prompt_default))
         if prompt_edit_default.exists() and self.mode_var.get() == "edit":
             self.prompt_var.set(str(prompt_edit_default))
+        guard_default = self.workdir / "language_guards.json"
+        if guard_default.exists() and not self.language_guard_config_var.get().strip():
+            self.language_guard_config_var.set(str(guard_default))
 
         gloss = self._find_glossary(self.workdir)
         if gloss:
@@ -3542,6 +3591,112 @@ class TranslatorGUI:
         step = self.mode_var.get().strip() or "translate"
         self._save_step_values(step)
 
+    def _health_state_badge(self, state: str) -> str:
+        s = str(state or "").strip().lower()
+        if s == "ok":
+            return "OK"
+        if s == "skip":
+            return "SKIP"
+        return "FAIL"
+
+    def _health_check_providers(self) -> None:
+        self.model_status.configure(text="Sprawdzam provider health (async I/O)...")
+        self.health_trend_var.set(self.tr("status.health_trend.pending", "Health trend: odswiezanie..."))
+        ollama_host = self.ollama_host_var.get().strip() or OLLAMA_HOST_DEFAULT
+        google_key = self._google_api_key()
+
+        def worker() -> None:
+            try:
+                timeout_s = max(6, min(30, int(float(self.timeout_var.get().strip() or "20"))))
+            except Exception:
+                timeout_s = 20
+            try:
+                status_map = gather_provider_health(
+                    ollama_host=ollama_host,
+                    google_api_key=google_key,
+                    timeout_s=timeout_s,
+                    include_ollama=True,
+                    include_google=True,
+                )
+            except Exception as e:
+                err = str(e)
+                self.root.after(0, lambda msg=err: self.model_status.configure(text=f"Health check fail: {msg}"))
+                return
+
+            lines: List[str] = []
+            details: List[str] = []
+            payload_rows: List[Dict[str, Any]] = []
+            for key in ("ollama", "google"):
+                st = status_map.get(key)
+                if st is None:
+                    continue
+                badge = self._health_state_badge(getattr(st, "state", "fail"))
+                latency = int(getattr(st, "latency_ms", 0) or 0)
+                model_count = int(getattr(st, "model_count", 0) or 0)
+                lines.append(f"{key.upper()}={badge} {latency}ms m={model_count}")
+                detail = str(getattr(st, "detail", "") or "").strip()
+                if detail and badge != "OK":
+                    details.append(f"{key}: {detail}")
+                payload_rows.append(
+                    {
+                        "provider": str(getattr(st, "provider", key) or key).strip().lower(),
+                        "state": str(getattr(st, "state", "fail") or "fail").strip().lower(),
+                        "latency_ms": latency,
+                        "model_count": model_count,
+                        "detail": detail,
+                    }
+                )
+            summary = " | ".join(lines) if lines else "Brak danych health check."
+            trend_lines: List[str] = []
+            alerts: List[str] = []
+            if payload_rows:
+                health_db: Optional[ProjectDB] = None
+                try:
+                    health_db = ProjectDB(SQLITE_FILE)
+                    health_db.record_provider_health_checks(payload_rows)
+                    for row in payload_rows:
+                        provider_key = str(row.get("provider", "")).strip().lower()
+                        if not provider_key:
+                            continue
+                        snap = health_db.provider_health_summary(provider_key, window=20)
+                        total = int(snap.get("total", 0) or 0)
+                        fail_streak = int(snap.get("failure_streak", 0) or 0)
+                        avg_latency = int(snap.get("avg_latency_ms", 0) or 0)
+                        latest = str(snap.get("latest_state", "n/a") or "n/a").upper()
+                        trend_lines.append(f"{provider_key.upper()}: latest={latest} streak={fail_streak} avg={avg_latency}ms n={total}")
+                        if fail_streak >= 3:
+                            alerts.append(f"{provider_key.upper()} failure streak={fail_streak} (window=20)")
+                except Exception as e:
+                    details.append(f"health telemetry persist failed: {e}")
+                finally:
+                    if health_db is not None:
+                        try:
+                            health_db.close()
+                        except Exception:
+                            pass
+            trend_summary = " | ".join(trend_lines) if trend_lines else self.tr("status.health_trend.none", "Health trend: brak danych")
+
+            def apply_summary() -> None:
+                self.model_status.configure(text=summary)
+                self.health_trend_var.set(trend_summary)
+                self.log_queue.put(f"[HEALTH] {summary}\n")
+                if trend_lines:
+                    self.log_queue.put(f"[HEALTH] trend: {trend_summary}\n")
+                for item in details:
+                    self.log_queue.put(f"[HEALTH] {item}\n")
+                if alerts:
+                    for item in alerts:
+                        self.log_queue.put(f"[HEALTH][ALERT] {item}\n")
+                    self._set_inline_notice(
+                        "Health alert: wykryto serie nieudanych probe providera.",
+                        level="warn",
+                        timeout_ms=9000,
+                    )
+
+            self.root.after(0, apply_summary)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _refresh_models(self) -> None:
         self.model_status.configure(text="Pobieram listĂ„â„˘ modeli...")
         provider = self.provider_var.get().strip()
@@ -3671,10 +3826,10 @@ class TranslatorGUI:
         if added > 0:
             self.log_queue.put(f"[SERIES] Dodano {added} proponowanych terminow do serii '{series_name}'.\n")
 
-    def _build_command(self) -> List[str]:
+    def _runtime_options(self) -> CoreRunOptions:
         effective_prompt = self._effective_prompt_for_run()
         effective_glossary = self._effective_glossary_for_run() if bool(self.use_glossary_var.get()) else self.glossary_var.get().strip()
-        opts = CoreRunOptions(
+        return CoreRunOptions(
             provider=self.provider_var.get().strip(),
             input_epub=self.input_epub_var.get().strip(),
             output_epub=self.output_epub_var.get().strip(),
@@ -3705,7 +3860,12 @@ class TranslatorGUI:
             context_window=self.context_window_var.get().strip(),
             context_neighbor_max_chars=self.context_neighbor_max_chars_var.get().strip(),
             context_segment_max_chars=self.context_segment_max_chars_var.get().strip(),
+            io_concurrency=self.io_concurrency_var.get().strip(),
+            language_guard_config=self.language_guard_config_var.get().strip(),
         )
+    
+    def _build_command(self) -> List[str]:
+        opts = self._runtime_options()
         return core_build_run_command(self._translator_cmd_prefix(), opts, tm_fuzzy_threshold="0.92")
 
     def _build_validation_command(self, epub_path: str) -> List[str]:
@@ -3778,6 +3938,7 @@ class TranslatorGUI:
             ("timeout", self.timeout_var.get().strip()),
             ("attempts", self.attempts_var.get().strip()),
             ("checkpoint", self.checkpoint_var.get().strip()),
+            ("io-concurrency", self.io_concurrency_var.get().strip()),
             ("context-window", self.context_window_var.get().strip()),
             ("context-neighbor-max-chars", self.context_neighbor_max_chars_var.get().strip()),
             ("context-segment-max-chars", self.context_segment_max_chars_var.get().strip()),
@@ -3795,6 +3956,14 @@ class TranslatorGUI:
                 float(v.replace(",", "."))
             except Exception:
                 return f"Pole {num_label} musi byĂ„â€ˇ liczbĂ„â€¦."
+
+        runtime_err = core_validate_run_options(
+            self._runtime_options(),
+            google_api_key=self._google_api_key(),
+            supported_text_langs=set(SUPPORTED_TEXT_LANGS.keys()),
+        )
+        if runtime_err:
+            return f"Runtime contract: {runtime_err}"
 
         return None
 
@@ -4353,9 +4522,11 @@ class TranslatorGUI:
             "use_glossary": self.use_glossary_var.get(),
             "hard_gate_epubcheck": self.hard_gate_epubcheck_var.get(),
             "checkpoint": self.checkpoint_var.get(),
+            "io_concurrency": self.io_concurrency_var.get(),
             "context_window": self.context_window_var.get(),
             "context_neighbor_max_chars": self.context_neighbor_max_chars_var.get(),
             "context_segment_max_chars": self.context_segment_max_chars_var.get(),
+            "language_guard_config": self.language_guard_config_var.get(),
             "source_lang": self.source_lang_var.get(),
             "target_lang": self.target_lang_var.get(),
         }
@@ -4393,6 +4564,7 @@ class TranslatorGUI:
         self.use_glossary_var.set(bool(data.get("use_glossary", self.use_glossary_var.get())))
         self.hard_gate_epubcheck_var.set(bool(data.get("hard_gate_epubcheck", self.hard_gate_epubcheck_var.get())))
         self.checkpoint_var.set(data.get("checkpoint", self.checkpoint_var.get()))
+        self.io_concurrency_var.set(str(data.get("io_concurrency", self.io_concurrency_var.get() or "1")))
         self.context_window_var.set(str(data.get("context_window", self.context_window_var.get() or "0")))
         self.context_neighbor_max_chars_var.set(
             str(data.get("context_neighbor_max_chars", self.context_neighbor_max_chars_var.get() or "180"))
@@ -4400,6 +4572,7 @@ class TranslatorGUI:
         self.context_segment_max_chars_var.set(
             str(data.get("context_segment_max_chars", self.context_segment_max_chars_var.get() or "1200"))
         )
+        self.language_guard_config_var.set(str(data.get("language_guard_config", self.language_guard_config_var.get() or "")))
         self.tooltip_mode_var.set(str(data.get("tooltip_mode", self.tooltip_mode_var.get() or "hybrid")))
         self.source_lang_var.set(str(data.get("source_lang", self.source_lang_var.get() or "en")))
         self.target_lang_var.set(str(data.get("target_lang", self.target_lang_var.get() or "pl")))

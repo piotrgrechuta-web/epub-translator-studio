@@ -239,6 +239,11 @@ To wszystko. Masz pierwszy kompletny przebieg.
 5. `Odswiez liste modeli`
 - pobiera modele dostepne dla wybranego providera.
 
+6. `Health check I/O`
+- uruchamia asynchroniczny preflight providerow (`ollama` i `google`) z telemetryka:
+  status, opoznienie (ms) i liczba modeli.
+- wynik trafia do statusu modelu i logu jako wpisy `[HEALTH]`.
+
 ## 7.4 Ustawienia zaawansowane
 
 Najwazniejsze pola:
@@ -262,10 +267,15 @@ Najwazniejsze pola:
 - limity rozmiaru kontekstu (kontrola kosztu tokenow).
 - im wyzsze, tym lepsza spojnosc, ale wiekszy koszt.
 
-7. `Checkpoint co N plikow`
+7. `I/O concurrency`
+- liczba rownoleglych batchy translacji (AsyncIO) na provider.
+- `1` = tryb sekwencyjny, `>1` = rownolegle dispatchowanie batchy.
+- zwieksza przepustowosc dla providerow online, ale moze podniesc chwilowe zuzycie limitu API.
+
+8. `Checkpoint co N plikow`
 - zapis stanu wznowienia po rozdzialach.
 
-8. `Hard gate EPUBCheck`
+9. `Hard gate EPUBCheck`
 - blokuje finalizacje runu przy bledach struktury EPUB.
 
 ## 7.5 Uruchomienie
@@ -389,6 +399,9 @@ Do czego sluzy:
 Wazne:
 - pluginy sa ograniczone polityka bezpieczenstwa,
 - skrypt pluginu musi zgadzac sie z hash w `providers/manifest.json`.
+- `Health check selected` testuje pojedynczy plugin.
+- `Health check all (async)` uruchamia rownolegle testy wielu pluginow
+  (z limitem wspolbieznosci i timeoutem), pokazuje czas i status per plugin.
 
 ## 9. Jak dzialaja gate'y jakosci
 

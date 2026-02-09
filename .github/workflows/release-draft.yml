@@ -1,0 +1,94 @@
+name: Release Draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag release (opcjonalnie, np. v0.7.0)"
+        required: false
+        type: string
+      from_ref:
+        description: "Poczatek zakresu commitow (opcjonalnie, np. v0.6.0)"
+        required: false
+        type: string
+      to_ref:
+        description: "Koniec zakresu commitow (domyslnie HEAD)"
+        required: false
+        type: string
+      db_path:
+        description: "Sciezka do DB z metrykami runtime (opcjonalnie)"
+        required: false
+        default: "project-tkinter/translator_studio.db"
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build release notes draft
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          FROM_REF="${{ github.event.inputs.from_ref }}"
+          TO_REF="${{ github.event.inputs.to_ref }}"
+          DB_PATH="${{ github.event.inputs.db_path }}"
+          EXTRA_ARGS=()
+          if [ -n "$FROM_REF" ]; then
+            EXTRA_ARGS+=(--from-ref "$FROM_REF")
+          fi
+          if [ -n "$TO_REF" ]; then
+            EXTRA_ARGS+=(--to-ref "$TO_REF")
+          fi
+          if [ -n "$DB_PATH" ] && [ -f "$DB_PATH" ]; then
+            EXTRA_ARGS+=(--db-path "$DB_PATH")
+          fi
+          python project-tkinter/scripts/generate_release_notes.py \
+            --output artifacts/release_notes.md \
+            --title "Release Draft (${GITHUB_REF_NAME})" \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Upload release notes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-draft
+          path: artifacts/release_notes.md
+          if-no-files-found: error
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          elif [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          else
+            TAG="draft-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish draft GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }} (draft)
+          body_path: artifacts/release_notes.md
+          draft: true
+          prerelease: false
+          generate_release_notes: false

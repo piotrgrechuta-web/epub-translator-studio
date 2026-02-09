@@ -18,7 +18,14 @@ from tkinter.scrolledtext import ScrolledText
 from lxml import etree
 
 from epub_enhancer import list_chapters, load_chapter_segments, save_chapter_changes
-from provider_runtime import load_plugins, render_command, plugin_health_check, rebuild_provider_manifest, validate_plugins_integrity
+from provider_runtime import (
+    load_plugins,
+    render_command,
+    plugin_health_check,
+    plugin_health_check_many,
+    rebuild_provider_manifest,
+    validate_plugins_integrity,
+)
 from qa_assignment import choose_assignee, build_load_map
 from alerts import build_overdue_payload, send_webhook
 from gui_tooltips import install_tooltips
@@ -195,6 +202,7 @@ class StudioSuiteWindow:
             "Create template": tip("Tworzy przykładowy plugin JSON."),
             "Validate all": tip("Waliduje wszystkie pluginy providerów."),
             "Health check selected": tip("Uruchamia health-check wybranego pluginu."),
+            "Health check all (async)": tip("Uruchamia rownolegle health-check wszystkich pluginow."),
         }
         var_tip = {
             str(self.qa_epub._name): tip("Plik EPUB do skanowania QA."),
@@ -1245,6 +1253,7 @@ class StudioSuiteWindow:
         ttk.Button(bar, text="Rebuild manifest", command=self._plugins_rebuild_manifest).pack(side="left", padx=(8, 0))
         ttk.Button(bar, text="Validate all", command=self._plugins_validate).pack(side="left", padx=(8, 0))
         ttk.Button(bar, text="Health check selected", command=self._plugins_health_check).pack(side="left", padx=(8, 0))
+        ttk.Button(bar, text="Health check all (async)", command=self._plugins_health_check_all_async).pack(side="left", padx=(8, 0))
         self.pl_list = tk.Listbox(tab); self.pl_list.pack(fill="both", expand=True, pady=(8, 0))
         self.pl_log = ScrolledText(tab, height=8, font=("Consolas", 9)); self.pl_log.pack(fill="x")
         self._plugins_refresh()
@@ -1334,6 +1343,85 @@ class StudioSuiteWindow:
             self.pl_log.delete("1.0", "end")
             self.pl_log.insert("end", f"Health check error: {e}\n\n")
             self.pl_log.insert("end", self._plugins_policy_help())
+
+    def _plugins_health_check_all_async(self) -> None:
+        self.pl_log.delete("1.0", "end")
+        plugins, errors = load_plugins(self._plugins_dir())
+        if errors:
+            self.pl_log.insert("end", "Validation errors:\n")
+            for e in errors:
+                self.pl_log.insert("end", f"- {e}\n")
+            self.pl_log.insert("end", "\n")
+            self.pl_log.insert("end", self._plugins_policy_help() + "\n")
+            return
+        if not plugins:
+            self.pl_log.insert("end", "No plugins found.\n")
+            return
+
+        rendered: List[Tuple[str, str]] = []
+        for pl in plugins:
+            try:
+                cmd = render_command(
+                    pl.command_template,
+                    {
+                        "model": self.gui.model_var.get().strip() or "model",
+                        "prompt_file": self.gui.prompt_var.get().strip() or "prompt.txt",
+                        "input_file": self.gui.input_epub_var.get().strip() or "input.epub",
+                        "output_file": self.gui.output_epub_var.get().strip() or "output.epub",
+                    },
+                )
+                rendered.append((pl.path.name, cmd))
+            except Exception as e:
+                self.pl_log.insert("end", f"- {pl.path.name}: render error: {e}\n")
+
+        if not rendered:
+            self.pl_log.insert("end", "No runnable plugin commands.\n")
+            return
+
+        self.pl_log.insert(
+            "end",
+            f"Running async health checks for {len(rendered)} plugin(s) "
+            "(max_concurrency=4, timeout=15s)...\n",
+        )
+
+        def worker() -> None:
+            try:
+                results = plugin_health_check_many(
+                    [cmd for _, cmd in rendered],
+                    cwd=self.gui.workdir,
+                    timeout_s=15,
+                    max_concurrency=4,
+                )
+            except Exception as e:
+                self.win.after(0, lambda msg=str(e): self.pl_log.insert("end", f"Health check all error: {msg}\n"))
+                return
+
+            def apply_results() -> None:
+                ok_count = 0
+                fail_count = 0
+                for idx, result in enumerate(results):
+                    plugin_name = rendered[idx][0] if idx < len(rendered) else f"plugin#{idx+1}"
+                    mark = "OK" if bool(result.ok) else "FAIL"
+                    if result.ok:
+                        ok_count += 1
+                    else:
+                        fail_count += 1
+                    self.pl_log.insert(
+                        "end",
+                        f"[{mark}] {plugin_name} | {result.duration_ms}ms\n"
+                        f"Command: {result.command}\n",
+                    )
+                    out = str(result.output or "").strip()
+                    if out:
+                        if len(out) > 800:
+                            out = out[:800] + "\n...[truncated]..."
+                        self.pl_log.insert("end", out + "\n")
+                    self.pl_log.insert("end", "\n")
+                self.pl_log.insert("end", f"Summary: ok={ok_count}, fail={fail_count}\n")
+
+            self.win.after(0, apply_results)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _plugins_policy_help(self) -> str:
         return (

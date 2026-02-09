@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
 import shlex
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -18,6 +20,14 @@ class ProviderPlugin:
     path: Path
     name: str
     command_template: str
+
+
+@dataclass
+class PluginHealthResult:
+    command: str
+    ok: bool
+    output: str
+    duration_ms: int
 
 
 _TPL_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
@@ -213,3 +223,71 @@ def plugin_health_check(command: str, cwd: Path, timeout_s: int = 10) -> Tuple[b
         return False, out.strip() or f"exit={p.returncode}"
     except Exception as e:
         return False, str(e)
+
+
+async def plugin_health_check_async(command: str, cwd: Path, timeout_s: int = 10) -> Tuple[bool, str]:
+    try:
+        verify_command_integrity(command, cwd=cwd)
+        cmd = shlex.split(command)
+        try:
+            p = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=str(cwd),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except NotImplementedError:
+            return await asyncio.to_thread(plugin_health_check, command, cwd, timeout_s)
+        try:
+            out_b, err_b = await asyncio.wait_for(p.communicate(), timeout=float(timeout_s))
+        except asyncio.TimeoutError:
+            p.kill()
+            await p.communicate()
+            return False, f"timeout after {int(timeout_s)}s"
+        out = (out_b or b"").decode("utf-8", errors="replace") + "\n" + (err_b or b"").decode("utf-8", errors="replace")
+        if int(p.returncode or 0) == 0:
+            return True, out.strip()
+        return False, out.strip() or f"exit={p.returncode}"
+    except Exception as e:
+        return False, str(e)
+
+
+async def plugin_health_check_many_async(
+    commands: List[str],
+    cwd: Path,
+    timeout_s: int = 10,
+    max_concurrency: int = 4,
+) -> List[PluginHealthResult]:
+    sem = asyncio.Semaphore(max(1, int(max_concurrency)))
+    results: List[Optional[PluginHealthResult]] = [None for _ in commands]
+
+    async def _run_one(idx: int, command: str) -> None:
+        started = time.perf_counter()
+        async with sem:
+            ok, out = await plugin_health_check_async(command, cwd=cwd, timeout_s=timeout_s)
+        elapsed_ms = int((time.perf_counter() - started) * 1000.0)
+        results[idx] = PluginHealthResult(
+            command=command,
+            ok=bool(ok),
+            output=str(out or "").strip(),
+            duration_ms=elapsed_ms,
+        )
+
+    await asyncio.gather(*[asyncio.create_task(_run_one(i, cmd)) for i, cmd in enumerate(commands)])
+    return [r for r in results if r is not None]
+
+
+def plugin_health_check_many(
+    commands: List[str],
+    cwd: Path,
+    timeout_s: int = 10,
+    max_concurrency: int = 4,
+) -> List[PluginHealthResult]:
+    return asyncio.run(
+        plugin_health_check_many_async(
+            commands=commands,
+            cwd=cwd,
+            timeout_s=timeout_s,
+            max_concurrency=max_concurrency,
+        )
+    )
