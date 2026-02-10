@@ -11,6 +11,18 @@ EPUB translator desktop app for AI-powered translation, post-editing, and QA of 
 
 KEYWORDS: `EPUB translator`, `EPUB translator desktop app`, `EPUB translation tool`, `AI translation`, `ebook translator`, `Ollama translator`, `Google Gemini translation`, `Translation Memory`, `QA gate`, `Tkinter`, `Python`.
 
+## Bilingual quick read (EN/PL)
+
+### English
+- Desktop app for EPUB translation and post-editing with AI providers (Ollama/Google).
+- Focus on safe resume, ledger idempotency, QA gates, and practical workflow for long books.
+- Full Polish version: `README.pl.md`.
+
+### Polski
+- Aplikacja desktop do tlumaczenia i redakcji EPUB z providerami AI (Ollama/Google).
+- Nacisk na bezpieczne wznawianie, idempotentny ledger, bramki QA i praktyczny workflow dla dlugich ksiazek.
+- Pelna wersja PL: `README.pl.md`.
+
 ## Unique strengths (not common in most EPUB tools)
 - idempotent processing with segment ledger (`done/processing/error/pending`) and safe resume after interruption
 - managed DB migrations with backup + rollback (`migration_runs`, startup recovery notice, DB Update panel)

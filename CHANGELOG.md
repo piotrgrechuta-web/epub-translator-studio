@@ -54,6 +54,11 @@ All notable changes to this project are documented in this file.
   - `project-tkinter/tests/test_async_health_checks.py`.
 
 ### Changed
+- Roadmap/repository alignment (GitHub + docs):
+  - closed umbrella issue `#51` (M9) and moved active delivery tracks to milestone `M10` (`#53`, `#54`, `#55`),
+  - synchronized status in `docs/07-Roadmapa-i-kontrybucje.md` and `docs/09-Backlog-do-uzgodnienia.md`.
+- README update:
+  - added bilingual quick section (EN/PL) to `README.md`.
 - Naming cleanup (repo alignment):
   - `project-tkinter/tlumacz_ollama.py` renamed to `project-tkinter/translation_engine.py`,
   - `project-tkinter/start.py` renamed to `project-tkinter/launcher_classic.py`,

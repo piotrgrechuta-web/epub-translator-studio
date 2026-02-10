@@ -11,7 +11,8 @@ Status:
 - Increment Async I/O: zrealizowany etap preflight providerow/pluginow (asynchroniczne health-checki i telemetryka), bez zmiany deterministycznego pipeline translacji.
 - Milestone `M3-M7` i ich issue sa domkniete na GitHub.
 - Milestone `M8` jest domkniety (issue: `#45-#49` zamkniete).
-- Aktywny jest milestone `M9` (issue: `#50-#54`).
+- Milestone `M9` jest domkniety (`#51` zamkniete jako issue-umbrella).
+- Aktywny jest milestone `M10` (issue: `#53-#55`).
 
 ## Cel
 
@@ -20,7 +21,8 @@ Zamienic roadmape na konkretne, mierzalne zadania z jasnym zakresem i kryteriami
 ## Aktywne milestone'y
 
 1. `M9: Literary Consistency + Assistive QA + MCP`
-2. `M8: Async Runtime + Release Automation` (domkniety)
+2. `M10: Easy Mode Delivery Tracks`
+3. `M8: Async Runtime + Release Automation` (domkniety)
 
 ## M8: Async Runtime + Release Automation
 
@@ -74,59 +76,48 @@ Status M8: `domkniety`.
   - profile sa walidowane i trwale,
   - testy custom guardow przechodza.
 
-## M9: Literary Consistency + Assistive QA + MCP
+## M9: Easy Mode One-File Workflow
 
-Status M9: `aktywny`.
+Status M9: `domkniety` (issue umbrella `#51` zamkniete; realizacja rozbita na M10).
 
-### Issue #50: Global Entity Glossary (slownik bytow i nazw wlasnych)
+### Issue #51: Easy Mode umbrella
+- Status:
+  - zamkniete na GitHub jako issue-umbrella,
+  - zakres podzielony na mniejsze, wdrazalne strumienie w `M10` (`#53`, `#54`, `#55`).
+
+## M10: Easy Mode Delivery Tracks
+
+Status M10: `aktywny`.
+
+### Issue #53: Prompt Router: segment-aware system prompt selection
 - Zakres:
-  - nowa tabela SQLite dla encji (`entity_glossary`) z polami: `term_source`, `term_target`, `entity_type`, `lang_source`, `lang_target`, `notes`, `updated_at`,
-  - lookup encji przed translacja segmentu + wstrzykniecie constraints do promptu,
-  - walidator post-run: wykrywanie niespojnych wariantow nazw.
+  - routing promptu systemowego zaleznie od typu segmentu i kroku runu,
+  - spojnosc doboru promptow miedzy translacja i redakcja,
+  - testy wyboru promptu i fallbackow.
 - Done:
-  - encje sa stosowane deterministycznie w runtime i widoczne w UI,
-  - raport pokazuje naruszenia spojnosci (co najmniej: chapter, segment_id, warianty),
-  - testy repository/runtime/GUI dla lookup i walidacji przechodza.
+  - prompt jest wybierany deterministycznie wg reguly segmentowej,
+  - fallback nie przerywa runu przy brakach konfiguracji,
+  - testy regresji przechodza.
 
-### Issue #51: Confidence + Risk Scoring (flagowanie trudnych segmentow)
+### Issue #54: Easy Startup: auto-pathing and auto-resume (no-config)
 - Zakres:
-  - rozszerzenie ledgera o `confidence_score` i `ai_notes`,
-  - composite risk score (self-score modelu + retry/timeout + language-guard + semantic gate + entity-mismatch),
-  - oznaczanie segmentow `orange/red` oraz filtr "pokaz tylko ryzykowne".
+  - automatyczne podpowiadanie sciezek input/output/cache,
+  - automatyczne wznowienie po bezpiecznym wykryciu stanu pending/running,
+  - ograniczenie liczby decyzji wymaganych od nowego uzytkownika.
 - Done:
-  - segmenty z ryzykiem > progu sa automatycznie flagowane i filtrowalne w GUI,
-  - score jest trwale zapisany i widoczny w eksporcie runu,
-  - progi i skladniki score sa konfigurowalne oraz przetestowane.
+  - uzytkownik moze zaczac run bez recznego konfigurowania pelnego zestawu sciezek,
+  - scenariusz resume dziala przewidywalnie po przerwaniu,
+  - testy integracyjne startup/resume przechodza.
 
-### Issue #52: Dynamic Token Balancing (batch manager)
+### Issue #55: Reliability UX: silent wait-and-retry for transient provider errors
 - Zakres:
-  - manager laczenia bardzo krotkich segmentow i izolowania dlugich,
-  - provider-aware limity tokenow/znakow + fallback na tryb bezpieczny,
-  - zachowanie stabilnego mapowania `segment_id -> wynik` i idempotencji ledgera.
+  - cichy mechanizm wait-and-retry dla bledow chwilowych providera,
+  - czytelny sygnal w logu/statusie bez blokowania UX,
+  - zachowanie idempotencji ledgera przy retry.
 - Done:
-  - benchmark pokazuje krotszy czas i/lub mniejszy koszt na corpusie dialogowym,
-  - brak regresji jakosci i brak duplikatow/utraty segmentow,
-  - testy regresji mapowania batch->segment przechodza.
-
-### Issue #53: MCP Gateway Read-Only (kontekst dla zewnetrznych modeli)
-- Zakres:
-  - endpointy MCP read-only: projekty, ledger, findings, metryki, glossary, health,
-  - kontrakt narzedzi MCP + dokumentacja scenariuszy "assistant over project state",
-  - minimalny model uprawnien (scope per projekt).
-- Done:
-  - klient MCP potrafi pobrac stan projektu i zlozyc raport bez zapisu do DB,
-  - audyt zapytan MCP jest logowany,
-  - testy integracyjne MCP read-only przechodza.
-
-### Issue #54: MCP Write Actions + Audit Gate (bezpieczne operacje zapisu)
-- Zakres:
-  - kontrolowane akcje zapisu przez MCP (np. dodanie wpisu glossary, update statusu finding),
-  - policy gate + potwierdzenia dla operacji mutujacych,
-  - rozszerzony audit trail (`who/when/what/before/after`).
-- Done:
-  - wszystkie write actions przechodza przez gate i sa audytowane,
-  - mozliwy rollback logiczny dla krytycznych zmian,
-  - brak nieautoryzowanych zapisow w testach negatywnych.
+  - transient fail nie powoduje natychmiastowego hard-fail runu,
+  - retry nie duplikuje segmentow ani wpisow ledgera,
+  - telemetry retry jest widoczna i testowana.
 
 ## M1: UI Consistency + UX Telemetry
 
