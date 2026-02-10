@@ -55,6 +55,13 @@ from runtime_core import (
 from series_store import SeriesStore, detect_series_hint
 from text_preserve import set_text_preserving_inline, tokenize_inline_markup, apply_tokenized_inline_markup
 from ui_style import apply_app_theme
+from easy_startup import (
+    discover_input_epubs,
+    match_projects_by_input_and_langs,
+    parse_ambiguous_choice,
+    resume_eligibility,
+    suggest_paths_for_step,
+)
 
 APP_TITLE = "EPUB Translator Studio"
 SETTINGS_FILE = Path(__file__).resolve().with_name(".gui_settings.json")
@@ -2450,11 +2457,12 @@ class TranslatorGUI:
         refresh_all()
 
     def _default_project_values(self, source_epub: Path) -> Dict[str, Any]:
-        stem = source_epub.stem
         src_lang = (self.source_lang_var.get() or "en").strip().lower()
         tgt_lang = (self.target_lang_var.get() or "pl").strip().lower()
         prompt_translate = str((self.workdir / "prompt.txt")) if (self.workdir / "prompt.txt").exists() else ""
         prompt_edit = str((self.workdir / "prompt_redakcja.txt")) if (self.workdir / "prompt_redakcja.txt").exists() else ""
+        out_translate = suggest_paths_for_step(source_epub, target_lang=tgt_lang, step="translate")
+        out_edit = suggest_paths_for_step(source_epub, target_lang=tgt_lang, step="edit")
         gloss = self._find_glossary(self.workdir)
         profiles = self.db.list_profiles()
         profile_translate = None
@@ -2470,13 +2478,13 @@ class TranslatorGUI:
             "series_id": series_id,
             "volume_no": volume_no,
             "input_epub": str(source_epub),
-            "output_translate_epub": str(source_epub.with_name(f"{stem}_{tgt_lang}.epub")),
-            "output_edit_epub": str(source_epub.with_name(f"{stem}_{tgt_lang}_redakcja.epub")),
+            "output_translate_epub": str(out_translate.output_epub),
+            "output_edit_epub": str(out_edit.output_epub),
             "prompt_translate": prompt_translate,
             "prompt_edit": prompt_edit or prompt_translate,
             "glossary_path": str(gloss) if gloss else "",
-            "cache_translate_path": str(source_epub.with_name(f"cache_{stem}.jsonl")),
-            "cache_edit_path": str(source_epub.with_name(f"cache_{stem}_redakcja.jsonl")),
+            "cache_translate_path": str(out_translate.cache_path),
+            "cache_edit_path": str(out_edit.cache_path),
             "profile_translate_id": profile_translate,
             "profile_edit_id": profile_edit or profile_translate,
             "active_step": "translate",
@@ -3405,19 +3413,128 @@ class TranslatorGUI:
         if gloss:
             self.glossary_var.set(str(gloss))
 
-        first_epub = sorted(self.workdir.glob("*.epub"))
-        if first_epub:
-            self.input_epub_var.set(str(first_epub[0]))
-            self._on_input_selected()
-            if not self.db.list_projects():
-                vals = self._default_project_values(first_epub[0])
-                try:
-                    pid = self.db.create_project(first_epub[0].stem, vals)
-                    self.db.set_setting("active_project_id", pid)
-                except Exception:
-                    pass
+        saved_active = self.db.get_setting("active_project_id", None)
+        if not isinstance(saved_active, int):
+            self._apply_easy_startup_defaults()
 
         self._on_provider_change()
+
+    def _pick_input_candidate(self, candidates: List[Path]) -> Optional[Path]:
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        lines = [f"{idx + 1}. {p.name}" for idx, p in enumerate(candidates)]
+        choice = simple_prompt(
+            self.root,
+            "Easy Startup",
+            "Wykryto wiele plikow EPUB. Wpisz numer (domyslnie 1):\n" + "\n".join(lines),
+            default_value="1",
+        )
+        if choice is None:
+            return None
+        return parse_ambiguous_choice(candidates, choice)
+
+    def _pick_project_match(self, matches: List[Dict[str, Any]]) -> Optional[int]:
+        if not matches:
+            return None
+        if len(matches) == 1:
+            return int(matches[0]["id"])
+        lines: List[str] = []
+        for idx, row in enumerate(matches):
+            name = str(row.get("name") or f"Project-{idx + 1}")
+            updated = int(row.get("updated_at", 0) or 0)
+            lines.append(f"{idx + 1}. {name} (updated_at={updated})")
+        choice = simple_prompt(
+            self.root,
+            "Easy Startup",
+            "Znaleziono kilka projektow pasujacych do wejscia i jezykow.\nWybierz numer:\n" + "\n".join(lines),
+            default_value="1",
+        )
+        if choice is None:
+            return None
+        text = str(choice).strip()
+        if not text:
+            return int(matches[0]["id"])
+        try:
+            idx = int(text)
+        except Exception:
+            return None
+        if idx < 1 or idx > len(matches):
+            return None
+        return int(matches[idx - 1]["id"])
+
+    def _next_project_name(self, base_name: str) -> str:
+        base = str(base_name or "project").strip() or "project"
+        existing = {str(r["name"]).strip().lower() for r in self.db.list_projects()}
+        if base.lower() not in existing:
+            return base
+        idx = 2
+        while True:
+            cand = f"{base}_{idx}"
+            if cand.lower() not in existing:
+                return cand
+            idx += 1
+
+    def _apply_easy_startup_defaults(self) -> None:
+        current_input = self.input_epub_var.get().strip()
+        selected_input: Optional[Path] = None
+        if current_input and Path(current_input).exists():
+            selected_input = Path(current_input)
+        else:
+            candidates = discover_input_epubs(self.workdir)
+            selected_input = self._pick_input_candidate(candidates)
+        if selected_input is None:
+            return
+
+        self.input_epub_var.set(str(selected_input))
+        self._on_input_selected()
+
+        projects = [dict(r) for r in self.db.list_projects() if str(r.get("status") or "") != "deleted"]
+        matches = match_projects_by_input_and_langs(
+            projects,
+            input_epub=str(selected_input),
+            source_lang=self.source_lang_var.get().strip().lower(),
+            target_lang=self.target_lang_var.get().strip().lower(),
+        )
+        picked_project_id = self._pick_project_match(matches)
+        if picked_project_id is not None:
+            self.current_project_id = int(picked_project_id)
+            self.db.set_setting("active_project_id", self.current_project_id)
+        else:
+            vals = self._default_project_values(selected_input)
+            project_name = self._next_project_name(selected_input.stem)
+            try:
+                self.current_project_id = int(self.db.create_project(project_name, vals))
+                self.db.set_setting("active_project_id", self.current_project_id)
+            except Exception as e:
+                self._startup_notices.append(f"Easy startup create failed: {e}")
+                return
+
+        summary = self.db.get_project_with_stage_summary(int(self.current_project_id))
+        if summary is None:
+            self._startup_notices.append("Easy startup: fresh run context selected.")
+            return
+        active_step = str(summary.get("active_step") or "translate").strip().lower() or "translate"
+        stage = summary.get(active_step) if isinstance(summary.get(active_step), dict) else {}
+        stage_status = str((stage or {}).get("status", "none"))
+        stage_done = int((stage or {}).get("done", 0) or 0)
+        stage_total = int((stage or {}).get("total", 0) or 0)
+        cache_key = "cache_translate_path" if active_step == "translate" else "cache_edit_path"
+        cache_path = str(summary.get(cache_key) or "").strip()
+        _, ledger = self._ledger_counts_for_scope(int(self.current_project_id), active_step)
+        can_resume, reason = resume_eligibility(
+            project_status=str(summary.get("status") or "idle"),
+            stage_status=stage_status,
+            stage_done=stage_done,
+            stage_total=stage_total,
+            cache_exists=bool(cache_path and Path(cache_path).exists()),
+            ledger_counts=ledger,
+        )
+        if can_resume:
+            self._startup_notices.append(f"Easy startup: resumed run context ({active_step}, {reason}).")
+        else:
+            self._startup_notices.append("Easy startup: fresh run context selected.")
 
     def _find_translator(self) -> Path:
         candidates = [
@@ -3577,17 +3694,17 @@ class TranslatorGUI:
         if not p.exists():
             return
 
-        stem = p.stem
+        mode = (self.mode_var.get() or "translate").strip().lower() or "translate"
         tgt = (self.target_lang_var.get() or "pl").strip().lower()
-        if self.mode_var.get() == "translate":
-            out_name = f"{stem}_{tgt}.epub"
-            cache_name = f"cache_{stem}.jsonl"
-        else:
-            out_name = f"{stem}_{tgt}_redakcja.epub"
-            cache_name = f"cache_{stem}_redakcja.jsonl"
-
-        self.output_epub_var.set(str(p.with_name(out_name)))
-        self.cache_var.set(str(p.with_name(cache_name)))
+        suggested = suggest_paths_for_step(p, target_lang=tgt, step=mode)
+        self.output_epub_var.set(str(suggested.output_epub))
+        self.cache_var.set(str(suggested.cache_path))
+        if suggested.conflict_resolved:
+            self._set_inline_notice(
+                f"Easy startup: output already existed, using {suggested.output_epub.name}.",
+                level="warn",
+                timeout_ms=9000,
+            )
         step = self.mode_var.get().strip() or "translate"
         self._save_step_values(step)
 

@@ -5,6 +5,9 @@ All notable changes to this project are documented in this file.
 ## Unreleased
 
 ### Added
+- Easy Startup core helpers for no-config flow:
+  - `project-tkinter/easy_startup.py` (input discovery, safe output conflict resolution, project auto-match, resume eligibility),
+  - tests: `project-tkinter/tests/test_easy_startup.py`.
 - Series technical skeleton for Tkinter:
   - project-to-series assignment (`projects.series_id`, `projects.volume_no`),
   - `series` table in main DB,
@@ -54,6 +57,10 @@ All notable changes to this project are documented in this file.
   - `project-tkinter/tests/test_async_health_checks.py`.
 
 ### Changed
+- `project-tkinter/app_gui_classic.py`:
+  - startup defaults now support no-config auto-pathing and project auto-bind/create for single-click entry,
+  - ambiguous startup cases use lightweight chooser prompts instead of hard-fail,
+  - startup status now reports fresh context vs resumed context.
 - Roadmap/repository alignment (GitHub + docs):
   - closed umbrella issue `#51` (M9) and moved active delivery tracks to milestone `M10` (`#53`, `#54`, `#55`),
   - synchronized status in `docs/07-Roadmapa-i-kontrybucje.md` and `docs/09-Backlog-do-uzgodnienia.md`.
