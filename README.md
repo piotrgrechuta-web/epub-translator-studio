@@ -118,6 +118,16 @@ export GOOGLE_API_KEY="<YOUR_KEY>"
 - where progress/UI/Wiki are visible: `docs/08-Status-UI-i-Wiki.md`
 - series memory technical skeleton: `docs/10-Series-Style-Memory.md`
 
+## Security
+- Branch protection on `main` enforces required checks and required review.
+- CI security workflow (`.github/workflows/security-scans.yml`) runs:
+  - `gitleaks` for secret detection,
+  - `pip-audit` JSON report + blocking CVE threshold gate (`project-tkinter/scripts/pip_audit_cve_gate.py`),
+  - `trivy` filesystem scan with `HIGH,CRITICAL` fail gate.
+- `CodeQL` workflow is enabled in `.github/workflows/codeql.yml`.
+- Dependabot updates are configured in `.github/dependabot.yml`.
+- Recommendation: enable repository-level GitHub security features (`Dependabot alerts`, `Secret scanning`, `Secret scanning push protection`) in Settings.
+
 ## Support
 - Sponsor: https://github.com/sponsors/Piotr-Grechuta
 - a support link is also available directly in Tkinter app UI (`Support the project`)

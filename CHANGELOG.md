@@ -15,6 +15,10 @@ All notable changes to this project are documented in this file.
   - deterministic segment/batch classifier (`dialogue`, `narrative`, `mixed`, `other`),
   - strategy contracts (`default`, `dialogue`, `narrative`) with fallback to default,
   - tests: `project-tkinter/tests/test_prompt_router.py`.
+- Security hardening assets:
+  - Dependabot config: `.github/dependabot.yml`,
+  - CodeQL workflow: `.github/workflows/codeql.yml`,
+  - CVE threshold gate for pip-audit: `project-tkinter/scripts/pip_audit_cve_gate.py`.
 - Series technical skeleton for Tkinter:
   - project-to-series assignment (`projects.series_id`, `projects.volume_no`),
   - `series` table in main DB,
@@ -64,6 +68,10 @@ All notable changes to this project are documented in this file.
   - `project-tkinter/tests/test_async_health_checks.py`.
 
 ### Changed
+- Security CI hardening:
+  - `security-scans` Trivy gate now fails on `HIGH,CRITICAL`,
+  - `pip-audit` report is followed by blocking CVE threshold gate (`PIP_AUDIT_CVE_THRESHOLD`),
+  - README and wiki entries now include explicit security posture section.
 - Milestone status alignment:
   - `M10` marked as closed in roadmap/backlog/wiki entries after completing `#53`, `#54`, `#55`.
 - `project-tkinter/app_gui_classic.py`:

@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   security-scans:
@@ -36,16 +37,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install pip-audit
 
-      - name: Dependency audit report (pip-audit)
+      - name: Dependency audit report (pip-audit JSON)
         run: |
           pip-audit -r project-tkinter/requirements.txt --format json -o pip-audit.json || true
 
-      - name: Critical vulnerability gate (Trivy)
+      - name: Dependency audit gate (pip-audit CVE threshold)
+        env:
+          PIP_AUDIT_CVE_THRESHOLD: "1"
+        run: |
+          python project-tkinter/scripts/pip_audit_cve_gate.py pip-audit.json "${PIP_AUDIT_CVE_THRESHOLD}"
+
+      - name: High/Critical vulnerability gate (Trivy)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           scan-ref: .
           scanners: vuln
-          severity: CRITICAL
+          severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"

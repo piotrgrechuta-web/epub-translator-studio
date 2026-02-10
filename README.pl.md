@@ -100,6 +100,16 @@ export GOOGLE_API_KEY="<TWOJ_KLUCZ>"
 - portal dokumentacji online: `https://piotr-grechuta.github.io/epub-translator-studio/`
 - gdzie widac postep/UI/Wiki: `docs/08-Status-UI-i-Wiki.md`
 
+## Bezpieczenstwo
+- Ochrona brancha `main` wymusza wymagane checki i wymagany review.
+- Workflow CI security (`.github/workflows/security-scans.yml`) uruchamia:
+  - `gitleaks` (wykrywanie sekretow),
+  - `pip-audit` (raport JSON) + blokujacy gate progu CVE (`project-tkinter/scripts/pip_audit_cve_gate.py`),
+  - `trivy` z bramka `HIGH,CRITICAL`.
+- Workflow `CodeQL` jest skonfigurowany w `.github/workflows/codeql.yml`.
+- Dependabot updates sa skonfigurowane w `.github/dependabot.yml`.
+- Rekomendacja: wlacz w ustawieniach repo funkcje GitHub Security (`Dependabot alerts`, `Secret scanning`, `Secret scanning push protection`).
+
 ## Wsparcie
 - Sponsor: https://github.com/sponsors/Piotr-Grechuta
 - link wsparcia jest tez bezposrednio w UI aplikacji Tkinter (`Wesprzyj projekt`)

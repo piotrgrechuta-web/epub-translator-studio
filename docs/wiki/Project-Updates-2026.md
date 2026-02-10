@@ -20,6 +20,13 @@ This page tracks major updates that changed day-to-day workflow.
 - Managed DB migrations with backup/rollback and startup recovery.
 - Ledger-first idempotent processing with visible run strip (`done/processing/error/pending`).
 
+### Security and governance additions
+
+- CodeQL workflow enabled for repository code scanning.
+- Dependabot updates configured for `pip` and GitHub Actions.
+- Security gate raised to `HIGH,CRITICAL` in Trivy workflow.
+- `pip-audit` gate now blocks by configurable CVE threshold.
+
 ### Editing and quality
 
 - Prompt presets by provider/mode in GUI.
@@ -51,6 +58,13 @@ Ta strona zbiera najwazniejsze aktualizacje projektu, ktore zmienily codzienny w
 - Opcjonalny async dispatch z limitem wspolbieznosci (`--io-concurrency`).
 - Zarzadzane migracje DB z backupem/rollbackiem i recovery przy starcie.
 - Idempotentny, ledger-first pipeline z widocznym paskiem statusu (`done/processing/error/pending`).
+
+### Dodatki security i governance
+
+- Wlaczony workflow CodeQL do code scanning.
+- Skonfigurowane Dependabot updates dla `pip` i GitHub Actions.
+- Podniesiona bramka security Trivy do `HIGH,CRITICAL`.
+- `pip-audit` ma teraz blokujacy gate z konfigurowalnym progiem CVE.
 
 ### Edycja i jakosc
 

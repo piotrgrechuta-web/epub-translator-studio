@@ -12,6 +12,7 @@ This wiki is a quick entry point. Full technical details are in repository `docs
 - Milestone `M9` closed (umbrella `#51`), with scope split into active `M10` tracks.
 - Milestone `M10` closed (`#53-#55`): Prompt Router, Easy Startup, Reliability UX delivered.
 - Release draft automation is available in CI (`.github/workflows/release-draft.yml`).
+- Security pipeline hardened: `CodeQL` + Dependabot updates + `HIGH,CRITICAL` Trivy gate + blocking CVE gate for `pip-audit`.
 
 ### Start here
 
@@ -40,6 +41,7 @@ Ta wiki to szybki punkt startowy. Pelne szczegoly techniczne sa w `docs/` w repo
 - Milestone `M9` domkniety (umbrella `#51`), zakres rozdzielony na aktywne strumienie `M10`.
 - Milestone `M10` domkniety (`#53-#55`): Prompt Router, Easy Startup, Reliability UX dowiezione.
 - Automatyzacja draftu release dziala w CI (`.github/workflows/release-draft.yml`).
+- Utwardzony pipeline security: `CodeQL` + Dependabot updates + bramka Trivy `HIGH,CRITICAL` + blokujacy gate CVE dla `pip-audit`.
 
 ### Zacznij tutaj
 

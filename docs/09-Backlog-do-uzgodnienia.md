@@ -13,6 +13,7 @@ Status:
 - Milestone `M8` jest domkniety (issue: `#45-#49` zamkniete).
 - Milestone `M9` jest domkniety (`#51` zamkniete jako issue-umbrella).
 - Milestone `M10` jest domkniety (`#53-#55` zamkniete).
+- Security hardening CI/repo zostal wdrozony (CodeQL, Dependabot updates, gate `HIGH,CRITICAL`, blokujacy gate CVE).
 
 ## Cel
 
@@ -20,7 +21,7 @@ Zamienic roadmape na konkretne, mierzalne zadania z jasnym zakresem i kryteriami
 
 ## Aktywne milestone'y
 
-1. `M9: Literary Consistency + Assistive QA + MCP`
+1. Brak otwartych milestone'ow (stan po domknieciu M10).
 2. `M10: Easy Mode Delivery Tracks` (domkniety)
 3. `M8: Async Runtime + Release Automation` (domkniety)
 

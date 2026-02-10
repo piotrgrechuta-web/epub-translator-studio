@@ -14,6 +14,7 @@
 - `M8`: domkniete na GitHub (issue: `#45`, `#46`, `#47`, `#48`, `#49` sa zamkniete; milestone zamkniety).
 - `M9`: domkniete (`#51` zamkniete jako umbrella; zakres rozbity na `M10`).
 - `M10`: domkniete na GitHub (`#53`, `#54`, `#55` zamkniete; milestone zamkniety).
+- Security hardening (CI/repo): wdrozone (`CodeQL`, `Dependabot updates`, gate `HIGH,CRITICAL`, blokujacy gate CVE dla `pip-audit`).
 
 ## 7.1. Priorytety techniczne
 
