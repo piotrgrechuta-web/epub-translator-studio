@@ -11,6 +11,10 @@ All notable changes to this project are documented in this file.
 - Reliability retry UX helpers:
   - `project-tkinter/retry_ux.py` (retry state model, adaptive backoff with jitter, structured telemetry formatter),
   - tests: `project-tkinter/tests/test_retry_ux.py`.
+- Prompt router helpers for segment-aware strategy selection:
+  - deterministic segment/batch classifier (`dialogue`, `narrative`, `mixed`, `other`),
+  - strategy contracts (`default`, `dialogue`, `narrative`) with fallback to default,
+  - tests: `project-tkinter/tests/test_prompt_router.py`.
 - Series technical skeleton for Tkinter:
   - project-to-series assignment (`projects.series_id`, `projects.volume_no`),
   - `series` table in main DB,
@@ -68,6 +72,10 @@ All notable changes to this project are documented in this file.
   - provider retry loop emits structured retry telemetry (`[RETRY] ... state=waiting_retry/recovered`),
   - adaptive backoff respects `Retry-After` plus jitter,
   - terminal retry failures are summarized once when retry budget is exhausted.
+- `project-tkinter/translation_engine.py`:
+  - prompt router now selects segment-aware strategy before request build,
+  - runtime logs include selected strategy id and classifier confidence,
+  - strategy id is persisted in ledger model field for auditability (`model|strategy=<id>`).
 - `project-tkinter/app_gui_classic.py`:
   - run phase now shows friendly waiting/recovered states from retry telemetry without switching to error state.
 - Roadmap/repository alignment (GitHub + docs):

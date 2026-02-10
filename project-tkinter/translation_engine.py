@@ -1028,6 +1028,128 @@ def build_batch_prompt(
     return "\n\n".join(parts).strip() + "\n"
 
 
+@dataclass(frozen=True)
+class SegmentPromptStrategy:
+    id: str
+    system_prompt: str
+    constraints: Tuple[str, ...]
+    token_budget_hint: int
+
+
+PROMPT_STRATEGIES: Dict[str, SegmentPromptStrategy] = {
+    "default": SegmentPromptStrategy(
+        id="default",
+        system_prompt="Use balanced style for mixed narrative and dialogue.",
+        constraints=(
+            "Keep meaning faithful and output concise.",
+            "Preserve named entities and formatting.",
+        ),
+        token_budget_hint=2048,
+    ),
+    "dialogue": SegmentPromptStrategy(
+        id="dialogue",
+        system_prompt="Prioritize natural spoken rhythm and speaker consistency.",
+        constraints=(
+            "Keep each line voice-consistent.",
+            "Do not flatten punctuation that carries tone.",
+        ),
+        token_budget_hint=1792,
+    ),
+    "narrative": SegmentPromptStrategy(
+        id="narrative",
+        system_prompt="Prioritize narrative coherence and descriptive continuity.",
+        constraints=(
+            "Keep tense, references and scene continuity stable.",
+            "Prefer readability over literal word order.",
+        ),
+        token_budget_hint=2304,
+    ),
+}
+
+
+def classify_segment_class(text: str) -> Tuple[str, float]:
+    s = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not s:
+        return "other", 0.0
+    quote_marks = sum(s.count(ch) for ch in ['"', "“", "”", "„", "«", "»"])
+    dialogue_dash = len(re.findall(r"(?:^|\s)[—-]\s+\w", s))
+    question_exclaim = s.count("?") + s.count("!")
+    comma_semicolon = s.count(",") + s.count(";") + s.count(":")
+    words = [w for w in re.split(r"\s+", s) if w]
+    avg_words_per_sentence = float(len(words)) / max(1.0, float(len(re.findall(r"[.!?]+", s)) or 1))
+
+    dialogue_score = float((2 * quote_marks) + (3 * dialogue_dash) + question_exclaim)
+    narrative_score = float(comma_semicolon + (2.0 if avg_words_per_sentence >= 14.0 else 0.0))
+
+    if dialogue_score <= 0.0 and narrative_score <= 0.0:
+        return "other", 0.2
+    total = dialogue_score + narrative_score
+    if total <= 0.0:
+        return "other", 0.2
+    gap = abs(dialogue_score - narrative_score)
+    confidence = min(0.99, max(0.2, gap / total))
+    if gap <= 1.0:
+        return "mixed", 0.45
+    if dialogue_score > narrative_score:
+        return "dialogue", confidence
+    return "narrative", confidence
+
+
+def classify_batch_class(batch: List[Segment]) -> Tuple[str, float]:
+    if not batch:
+        return "other", 0.0
+    votes: Dict[str, float] = {"dialogue": 0.0, "narrative": 0.0, "mixed": 0.0, "other": 0.0}
+    conf_sum = 0.0
+    for seg in batch:
+        cls, conf = classify_segment_class(seg.plain)
+        votes[cls] = float(votes.get(cls, 0.0)) + 1.0
+        conf_sum += float(conf)
+    dominant = max(votes.items(), key=lambda kv: kv[1])[0]
+    avg_conf = conf_sum / float(max(1, len(batch)))
+    if dominant in {"mixed", "other"}:
+        return dominant, min(avg_conf, 0.49)
+    return dominant, avg_conf
+
+
+def route_prompt_strategy(
+    batch: List[Segment],
+    *,
+    fallback_threshold: float = 0.55,
+) -> Tuple[SegmentPromptStrategy, str, float]:
+    seg_class, confidence = classify_batch_class(batch)
+    if seg_class in {"dialogue", "narrative"} and confidence >= float(fallback_threshold):
+        st = PROMPT_STRATEGIES.get(seg_class, PROMPT_STRATEGIES["default"])
+        return st, seg_class, confidence
+    return PROMPT_STRATEGIES["default"], seg_class, confidence
+
+
+def build_router_adjusted_prompt(
+    base_prompt: str,
+    strategy: SegmentPromptStrategy,
+    *,
+    segment_class: str,
+    confidence: float,
+    style_overlay: str = "",
+) -> str:
+    constraints = "\n".join(f"- {x}" for x in strategy.constraints)
+    overlay = str(style_overlay or "").strip()
+    parts = [
+        base_prompt.strip(),
+        (
+            f"[Prompt Router]\n"
+            f"- strategy_id: {strategy.id}\n"
+            f"- classifier: {segment_class}\n"
+            f"- confidence: {confidence:.2f}\n"
+            f"- token_budget_hint: {int(strategy.token_budget_hint)}\n"
+            f"- system_prompt: {strategy.system_prompt}\n"
+            f"- constraints:\n{constraints}"
+        ),
+    ]
+    if overlay:
+        parts.append(f"[Style Overlay]\n{overlay}")
+    return "\n\n".join(parts).strip()
+
+
 def build_language_instruction(source_lang: str, target_lang: str) -> str:
     src = (source_lang or "en").strip().lower()
     tgt = (target_lang or "pl").strip().lower()
@@ -1484,6 +1606,8 @@ def translate_single_segment(
     glossary_index: Optional[Dict[str, List[GlossaryEntry]]],
     debug_dir: Optional[Path],
     debug_prefix: str,
+    *,
+    style_overlay: str = "",
 ) -> str:
     glossary_snip = ""
     if glossary_index is not None:
@@ -1491,7 +1615,19 @@ def translate_single_segment(
 
     batch_xml = build_batch_payload([(seg.seg_id, seg.inner)])
     context_notes = str(seg.context_hint or "").strip()
-    prompt = build_batch_prompt(base_prompt, glossary_snip, batch_xml, context_notes=context_notes)
+    strategy, seg_class, conf = route_prompt_strategy([seg])
+    print(
+        f"  [PROMPT-ROUTER] strategy={strategy.id} class={seg_class} conf={conf:.2f} segs=1",
+        flush=True,
+    )
+    routed_prompt = build_router_adjusted_prompt(
+        base_prompt,
+        strategy,
+        segment_class=seg_class,
+        confidence=conf,
+        style_overlay=style_overlay,
+    )
+    prompt = build_batch_prompt(routed_prompt, glossary_snip, batch_xml, context_notes=context_notes)
 
     resp = llm.generate(prompt, model=model)
     try:
@@ -1555,6 +1691,7 @@ def translate_batch_with_google_strategy(
     *,
     sleep_s: float,
     max_split_depth: int = 6,
+    style_overlay: str = "",
 ) -> Dict[str, str]:
     """
     Strategia pod Google:
@@ -1576,7 +1713,19 @@ def translate_batch_with_google_strategy(
             glossary_snip = pick_glossary_snippet(all_plain, glossary_index)
 
         context_notes = build_batch_context_notes(batch_local)
-        prompt = build_batch_prompt(base_prompt, glossary_snip, batch_xml, context_notes=context_notes)
+        strategy, seg_class, conf = route_prompt_strategy(batch_local)
+        print(
+            f"  [PROMPT-ROUTER] strategy={strategy.id} class={seg_class} conf={conf:.2f} segs={len(batch_local)}",
+            flush=True,
+        )
+        routed_prompt = build_router_adjusted_prompt(
+            base_prompt,
+            strategy,
+            segment_class=seg_class,
+            confidence=conf,
+            style_overlay=style_overlay,
+        )
+        prompt = build_batch_prompt(routed_prompt, glossary_snip, batch_xml, context_notes=context_notes)
 
         resp = ""
         try:
@@ -1594,6 +1743,7 @@ def translate_batch_with_google_strategy(
                         llm=llm, model=model, base_prompt=base_prompt, seg=s,
                         glossary_index=glossary_index, debug_dir=debug_dir,
                         debug_prefix=f"{debug_prefix}__retry_{s.idx:06d}",
+                        style_overlay=style_overlay,
                     )
             return mapping
 
@@ -1636,6 +1786,7 @@ def translate_batch_with_google_strategy(
                     llm=llm, model=model, base_prompt=base_prompt, seg=s,
                     glossary_index=glossary_index, debug_dir=debug_dir,
                     debug_prefix=f"{debug_prefix}__single_{s.idx:06d}",
+                    style_overlay=style_overlay,
                 )
             return out
 
@@ -1652,6 +1803,7 @@ def translate_batch_with_ollama_strategy(
     debug_prefix: str,
     *,
     sleep_s: float,
+    style_overlay: str = "",
 ) -> Dict[str, str]:
     """
     Strategia pod Ollama:
@@ -1668,7 +1820,19 @@ def translate_batch_with_ollama_strategy(
         glossary_snip = pick_glossary_snippet(all_plain, glossary_index)
 
     context_notes = build_batch_context_notes(batch)
-    prompt = build_batch_prompt(base_prompt, glossary_snip, batch_xml, context_notes=context_notes)
+    strategy, seg_class, conf = route_prompt_strategy(batch)
+    print(
+        f"  [PROMPT-ROUTER] strategy={strategy.id} class={seg_class} conf={conf:.2f} segs={len(batch)}",
+        flush=True,
+    )
+    routed_prompt = build_router_adjusted_prompt(
+        base_prompt,
+        strategy,
+        segment_class=seg_class,
+        confidence=conf,
+        style_overlay=style_overlay,
+    )
+    prompt = build_batch_prompt(routed_prompt, glossary_snip, batch_xml, context_notes=context_notes)
     resp = ""
     try:
         resp = llm.generate(prompt, model=model)
@@ -1684,6 +1848,7 @@ def translate_batch_with_ollama_strategy(
                 llm=llm, model=model, base_prompt=base_prompt, seg=s,
                 glossary_index=glossary_index, debug_dir=debug_dir,
                 debug_prefix=f"{debug_prefix}__single_{s.idx:06d}",
+                style_overlay=style_overlay,
             )
 
     missing = [s for s in batch if s.seg_id not in mapping or not (mapping[s.seg_id] or "").strip()]
@@ -1697,6 +1862,7 @@ def translate_batch_with_ollama_strategy(
                 llm=llm, model=model, base_prompt=base_prompt, seg=s,
                 glossary_index=glossary_index, debug_dir=debug_dir,
                 debug_prefix=f"{debug_prefix}__retry_{s.idx:06d}",
+                style_overlay=style_overlay,
             )
     return mapping
 
@@ -2709,6 +2875,9 @@ def translate_epub(
     if not quote_normalization:
         print("[QUOTE-NORM] disabled")
     base_prompt = base_prompt.strip() + "\n\n" + build_language_instruction(source_lang, target_lang)
+    style_overlay = str(os.environ.get("ETS_STYLE_PACK", "") or "").strip()
+    if style_overlay:
+        print("[PROMPT-ROUTER] style overlay enabled from ETS_STYLE_PACK")
     model = llm.resolve_model()
     cache = load_cache(cache_path)
     modified: Dict[str, bytes] = {}
@@ -3015,6 +3184,7 @@ def translate_epub(
                         debug_dir=debug_dir,
                         debug_prefix=debug_prefix_local,
                         sleep_s=sleep_s,
+                        style_overlay=style_overlay,
                     )
                 return translate_batch_with_ollama_strategy(
                     llm=llm,
@@ -3025,6 +3195,7 @@ def translate_epub(
                     debug_dir=debug_dir,
                     debug_prefix=debug_prefix_local,
                     sleep_s=sleep_s,
+                    style_overlay=style_overlay,
                 )
 
             def _apply_batch_mapping(
@@ -3035,6 +3206,8 @@ def translate_epub(
             ) -> None:
                 nonlocal changed, chapter_new_done
                 nonlocal global_new, global_done, global_retranslated, global_changed_retranslated
+                batch_strategy, _, _ = route_prompt_strategy(batch_local)
+                ledger_model = f"{model}|strategy={batch_strategy.id}"
                 for seg_local in batch_local:
                     tr_inner = (mapping_local.get(seg_local.seg_id) or "").strip()
                     if not tr_inner:
@@ -3062,7 +3235,7 @@ def translate_epub(
                             seg_local.plain,
                             tr_inner,
                             provider=provider,
-                            model=model,
+                            model=ledger_model,
                         )
                     replace_inner_xml(seg_local.el, tr_inner)
                     cache[seg_local.seg_id] = tr_inner
@@ -3135,14 +3308,20 @@ def translate_epub(
                     f"batch {batch_no} | segs={len(batch)} | idx={batch_first_idx}-{batch_last_idx} | chars~{batch_chars}",
                     flush=True,
                 )
+                batch_strategy, batch_class, batch_conf = route_prompt_strategy(batch)
+                print(
+                    f"  [PROMPT-ROUTER] strategy={batch_strategy.id} class={batch_class} conf={batch_conf:.2f} segs={len(batch)}",
+                    flush=True,
+                )
                 if segment_ledger is not None:
+                    ledger_model = f"{model}|strategy={batch_strategy.id}"
                     for s in batch:
                         segment_ledger.mark_processing(
                             chapter_path,
                             s.seg_id,
                             s.plain,
                             provider=provider,
-                            model=model,
+                            model=ledger_model,
                         )
                 batch_jobs.append((batch_no, batch, debug_prefix))
 
