@@ -78,7 +78,7 @@ GOOGLE_KEYRING_USER = "google_api_key"
 EPUBCHECK_TIMEOUT_S = 120
 APP_RUNTIME_VERSION = "0.6.1"
 GLOBAL_PROGRESS_RE = re.compile(r"GLOBAL\s+(\d+)\s*/\s*(\d+)\s*\(([^)]*)\)\s*\|\s*(.*)")
-TOTAL_SEGMENTS_RE = re.compile(r"Segmenty\s+(?:Äąâ€šĂ„â€¦cznie|lacznie)\s*:\s*(\d+)", re.IGNORECASE)
+TOTAL_SEGMENTS_RE = re.compile(r"Segmenty\s+(?:łącznie|lacznie)\s*:\s*(\d+)", re.IGNORECASE)
 CACHE_SEGMENTS_RE = re.compile(r"Segmenty\s+z\s+cache\s*:\s*(\d+)", re.IGNORECASE)
 CHAPTER_CACHE_TM_RE = re.compile(r"\(cache:\s*(\d+)\s*,\s*tm:\s*(\d+)\)", re.IGNORECASE)
 METRICS_BLOB_RE = re.compile(r"metrics\[(.*?)\]", re.IGNORECASE)
@@ -1283,7 +1283,7 @@ class TranslatorGUI:
         self._row_file(card, 1, self.tr("file.input_epub", "WejÄąâ€şciowy EPUB"), self.input_epub_var, [("EPUB", "*.epub")], self._on_input_selected)
         self._row_file(card, 2, self.tr("file.output_epub", "WyjÄąâ€şciowy EPUB"), self.output_epub_var, [("EPUB", "*.epub")])
         self._row_file(card, 3, self.tr("file.prompt", "Prompt"), self.prompt_var, [("TXT", "*.txt")], self._on_prompt_changed)
-        self._row_file(card, 4, self.tr("file.glossary", "SÄąâ€šownik"), self.glossary_var, [("TXT", "*.txt")])
+        self._row_file(card, 4, self.tr("file.glossary", "Słownik"), self.glossary_var, [("TXT", "*.txt")])
         self._row_file(card, 5, self.tr("file.cache", "Cache"), self.cache_var, [("JSONL", "*.jsonl"), ("All", "*.*")])
 
         ttk.Label(card, text=self.tr("label.mode", "Tryb:")).grid(row=6, column=0, sticky="w", pady=(8, 0))
@@ -3556,11 +3556,17 @@ class TranslatorGUI:
         return [py, "-u", self.translator_path.name]
 
     def _find_glossary(self, workdir: Path) -> Optional[Path]:
-        for name in ["SLOWNIK.txt", "slownik.txt", "Slownik.txt", "SÄąâ€šownik.txt", "SÄąÂOWNIK.txt"]:
+        for name in ["SLOWNIK.txt", "slownik.txt", "Slownik.txt", "SŁOWNIK.txt", "Słownik.txt", "słownik.txt"]:
             p = workdir / name
             if p.exists():
                 return p
-        cands = sorted([p for p in workdir.glob("*.txt") if "slownik" in p.name.lower() or "sÄąâ€šownik" in p.name.lower()])
+        cands = sorted(
+            [
+                p
+                for p in workdir.glob("*.txt")
+                if "slownik" in p.name.lower() or "słownik" in p.name.lower()
+            ]
+        )
         return cands[0] if cands else None
 
     def _on_input_selected(self) -> None:
@@ -4342,7 +4348,12 @@ class TranslatorGUI:
             runner_db: Optional[ProjectDB] = None
             try:
                 runner_db = ProjectDB(SQLITE_FILE)
-                env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+                env = {
+                    **os.environ,
+                    "PYTHONUNBUFFERED": "1",
+                    "PYTHONIOENCODING": "utf-8",
+                    "PYTHONUTF8": "1",
+                }
                 if provider == "google":
                     if google_api_key:
                         env[GOOGLE_API_KEY_ENV] = google_api_key
@@ -4530,7 +4541,12 @@ class TranslatorGUI:
                 self.proc = subprocess.Popen(
                     cmd,
                     cwd=str(self.workdir),
-                    env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                    env={
+                        **os.environ,
+                        "PYTHONUNBUFFERED": "1",
+                        "PYTHONIOENCODING": "utf-8",
+                        "PYTHONUTF8": "1",
+                    },
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
