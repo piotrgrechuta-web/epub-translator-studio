@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from qa_assignment import choose_assignee, build_load_map
 from alerts import build_overdue_payload, send_webhook
 from gui_tooltips import install_tooltips
 from text_preserve import set_text_preserving_inline
+from ui_widgets import ui_button
 
 
 EN_HINTS = {"the", "and", "of", "to", "in", "for", "with", "that", "this", "is", "are"}
@@ -137,7 +138,36 @@ class StudioSuiteWindow:
         self._build_db_update_tab(nb)
         self._build_dashboard_tab(nb)
         self._build_plugins_tab(nb)
+        self._apply_button_styles_explicit()
         self._install_tooltips()
+
+    def _apply_button_styles_explicit(self) -> None:
+        explicit: Dict[str, str] = {
+            "Scan": "Accent.TButton",
+            "Run epubcheck": "Accent.TButton",
+            "Health check selected": "Accent.TButton",
+            "Health check all (async)": "Accent.TButton",
+            "Approve QA": "Accent.TButton",
+            "Mark resolved": "Accent.TButton",
+            "Reject QA": "Danger.TButton",
+            "Escalate overdue": "Danger.TButton",
+            "Alert overdue": "Danger.TButton",
+            "Delete selected": "Danger.TButton",
+            "Restore": "Danger.TButton",
+        }
+        stack: List[tk.Misc] = [self.win]
+        while stack:
+            widget = stack.pop()
+            try:
+                stack.extend(list(widget.winfo_children()))
+            except Exception:
+                pass
+            try:
+                if str(widget.winfo_class()) == "TButton":
+                    label = str(widget.cget("text") or "")
+                    widget.configure(style=explicit.get(label, "Secondary.TButton"))
+            except Exception:
+                continue
 
     def _target(self) -> Optional[Path]:
         p = self.gui.output_epub_var.get().strip() or self.gui.input_epub_var.get().strip()
@@ -174,10 +204,10 @@ class StudioSuiteWindow:
             return s
 
         text_tip = {
-            self.gui.tr("button.choose", "Wybierz"): tip("Wybór pliku EPUB do analiz QA."),
-            "Scan": tip("Skanuje EPUB i wykrywa błędy jakości.", "Wykrywa m.in. EN leak i podwójne spacje.", risky=True),
+            self.gui.tr("button.choose", "Wybierz"): tip("WybĂłr pliku EPUB do analiz QA."),
+            "Scan": tip("Skanuje EPUB i wykrywa bĹ‚Ä™dy jakoĹ›ci.", "Wykrywa m.in. EN leak i podwĂłjne spacje.", risky=True),
             "Save findings": tip("Zapisuje findings QA do bazy."),
-            "Load open": tip("Ładuje otwarte findings QA."),
+            "Load open": tip("Ĺaduje otwarte findings QA."),
             "Mark resolved": tip("Oznacza zaznaczone findings jako resolved."),
             "Mark in_progress": tip("Oznacza zaznaczone findings jako in_progress."),
             "Approve QA": tip("Ustawia QA review = approved.", "Gate przechodzi tylko gdy brak open findings.", risky=True),
@@ -185,55 +215,55 @@ class StudioSuiteWindow:
             "Assign selected": tip("Przypisuje zaznaczone findings do osoby/SLA."),
             "Assign all open": tip("Masowe przypisanie wszystkich otwartych findings."),
             "Escalate overdue": tip("Eskalacja przeterminowanych findings."),
-            "Auto-assign rules": tip("Auto-przydział wg reguł JSON.", "Błędne reguły mogą przypisać zadania do złych osób.", risky=True),
-            "Alert overdue": tip("Wysyła webhook z listą overdue."),
-            "Load": tip("Ładuje rozdziały i segmenty do edycji."),
+            "Auto-assign rules": tip("Auto-przydziaĹ‚ wg reguĹ‚ JSON.", "BĹ‚Ä™dne reguĹ‚y mogÄ… przypisaÄ‡ zadania do zĹ‚ych osĂłb.", risky=True),
+            "Alert overdue": tip("WysyĹ‚a webhook z listÄ… overdue."),
+            "Load": tip("Ĺaduje rozdziaĹ‚y i segmenty do edycji."),
             "Save Segment": tip("Zapisuje zmiany segmentu."),
-            "Save EPUB": tip("Zapisuje rozdział do EPUB i backup."),
-            "Preview": tip("Podgląd trafień search/replace."),
-            "Apply": tip("Wykonuje search/replace.", "Operacja zmienia treść EPUB.", risky=True),
-            "Search": tip("Wyszukiwanie wpisów TM."),
+            "Save EPUB": tip("Zapisuje rozdziaĹ‚ do EPUB i backup."),
+            "Preview": tip("PodglÄ…d trafieĹ„ search/replace."),
+            "Apply": tip("Wykonuje search/replace.", "Operacja zmienia treĹ›Ä‡ EPUB.", risky=True),
+            "Search": tip("Wyszukiwanie wpisĂłw TM."),
             "Delete selected": tip("Usuwa wpisy TM.", "Operacja nieodwracalna.", risky=True),
             "Create": tip("Tworzy snapshot ZIP projektu."),
             "Restore": tip("Przywraca stan ze snapshotu.", "Nadpisuje obecne pliki.", risky=True),
-            "Run epubcheck": tip("Uruchamia walidację epubcheck."),
+            "Run epubcheck": tip("Uruchamia walidacjÄ™ epubcheck."),
             "Queue current project": tip("Ustawia projekt jako pending."),
-            "Refresh": tip("Odświeża dane sekcji."),
-            "Create template": tip("Tworzy przykładowy plugin JSON."),
-            "Validate all": tip("Waliduje wszystkie pluginy providerów."),
+            "Refresh": tip("OdĹ›wieĹĽa dane sekcji."),
+            "Create template": tip("Tworzy przykĹ‚adowy plugin JSON."),
+            "Validate all": tip("Waliduje wszystkie pluginy providerĂłw."),
             "Health check selected": tip("Uruchamia health-check wybranego pluginu."),
             "Health check all (async)": tip("Uruchamia rownolegle health-check wszystkich pluginow."),
         }
         var_tip = {
             str(self.qa_epub._name): tip("Plik EPUB do skanowania QA."),
-            str(self.qa_assignee_var._name): tip("Domyślny assignee dla przypisywania findings."),
+            str(self.qa_assignee_var._name): tip("DomyĹ›lny assignee dla przypisywania findings."),
             str(self.qa_due_days_var._name): tip("SLA w dniach.", "0 oznacza brak terminu i brak automatycznej eskalacji.", risky=True),
-            str(self.qa_webhook_var._name): tip("URL webhooka dla alertów overdue.", "Błędny URL spowoduje brak powiadomień.", risky=True),
-            str(self.qa_rules_var._name): tip("Reguły auto-przydziału JSON.", "Mapują rule_code/severity na assignee.", risky=True),
-            str(self.src_epub._name): tip("EPUB źródłowy do porównania."),
+            str(self.qa_webhook_var._name): tip("URL webhooka dla alertĂłw overdue.", "BĹ‚Ä™dny URL spowoduje brak powiadomieĹ„.", risky=True),
+            str(self.qa_rules_var._name): tip("ReguĹ‚y auto-przydziaĹ‚u JSON.", "MapujÄ… rule_code/severity na assignee.", risky=True),
+            str(self.src_epub._name): tip("EPUB ĹşrĂłdĹ‚owy do porĂłwnania."),
             str(self.tgt_epub._name): tip("EPUB docelowy do edycji."),
             str(self.s_find._name): tip("Fraza szukana."),
             str(self.s_rep._name): tip("Fraza zamienna."),
             str(self.tm_q._name): tip("Filtr wyszukiwania TM."),
             str(self.chk_epub._name): tip("EPUB do walidacji epubcheck."),
-            str(self.ill_epub._name): tip("EPUB dla reguł ilustracji."),
+            str(self.ill_epub._name): tip("EPUB dla reguĹ‚ ilustracji."),
             str(self.ill_dir._name): tip("Katalog z ilustracjami."),
-            str(self.ill_tag._name): tip("Tag rozdziału dla reguły ilustracji."),
+            str(self.ill_tag._name): tip("Tag rozdziaĹ‚u dla reguĹ‚y ilustracji."),
         }
         object_tip = {
             id(self.qa_list): "Lista findings QA wraz ze statusem, assignee i SLA.",
-            id(self.ch_list): "Lista rozdziałów dla edytora side-by-side.",
-            id(self.seg_list): "Lista segmentów wybranego rozdziału.",
-            id(self.src_txt): "Podgląd tekstu źródłowego (read-only).",
+            id(self.ch_list): "Lista rozdziaĹ‚Ăłw dla edytora side-by-side.",
+            id(self.seg_list): "Lista segmentĂłw wybranego rozdziaĹ‚u.",
+            id(self.src_txt): "PodglÄ…d tekstu ĹşrĂłdĹ‚owego (read-only).",
             id(self.tgt_txt): "Edytowalny tekst docelowy segmentu.",
             id(self.s_list): "Wyniki wyszukiwania/trafienia replace.",
             id(self.tm_list): "Wyniki Translation Memory.",
-            id(self.snap_list): "Lista dostępnych snapshotów.",
-            id(self.chk_log): "Log wyników EPUBCheck.",
+            id(self.snap_list): "Lista dostÄ™pnych snapshotĂłw.",
+            id(self.chk_log): "Log wynikĂłw EPUBCheck.",
             id(self.ill_log): "Log operacji ilustracji.",
-            id(self.dash): "Dashboard metryk runów, QA i TM.",
-            id(self.pl_list): "Lista pluginów providerów i wpisów invalid.",
-            id(self.pl_log): "Log walidacji i health-check pluginów.",
+            id(self.dash): "Dashboard metryk runĂłw, QA i TM.",
+            id(self.pl_list): "Lista pluginĂłw providerĂłw i wpisĂłw invalid.",
+            id(self.pl_log): "Log walidacji i health-check pluginĂłw.",
         }
 
         def fallback(widget: tk.Misc) -> Optional[str]:
@@ -241,11 +271,11 @@ class StudioSuiteWindow:
             if cls in {"TEntry", "Entry"}:
                 return tt("tip.fallback.entry", "Configuration input field affecting current pipeline step.")
             if cls in {"Listbox"}:
-                return "Lista elementów tej sekcji."
+                return "Lista elementĂłw tej sekcji."
             if cls in {"TButton"}:
-                return "Akcja uruchamiająca operację tej sekcji."
+                return "Akcja uruchamiajÄ…ca operacjÄ™ tej sekcji."
             if cls in {"Text"}:
-                return "Pole tekstowe z logiem/podglądem/edycją."
+                return "Pole tekstowe z logiem/podglÄ…dem/edycjÄ…."
             return None
 
         def resolver(widget: tk.Misc) -> Optional[str]:
@@ -269,23 +299,23 @@ class StudioSuiteWindow:
         top = ttk.Frame(tab)
         top.pack(fill="x")
         ttk.Entry(top, textvariable=self.qa_epub).pack(side="left", fill="x", expand=True)
-        ttk.Button(top, text="Wybierz", command=self._pick_qa).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Scan", command=self._scan_qa).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Save findings", command=self._qa_save_findings).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Load open", command=self._qa_load_open).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Mark resolved", command=self._qa_mark_resolved).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Mark in_progress", command=self._qa_mark_in_progress).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Approve QA", command=self._qa_approve).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Reject QA", command=self._qa_reject).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Wybierz", command=self._pick_qa).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Scan", command=self._scan_qa).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Save findings", command=self._qa_save_findings).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Load open", command=self._qa_load_open).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Mark resolved", command=self._qa_mark_resolved).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Mark in_progress", command=self._qa_mark_in_progress).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Approve QA", command=self._qa_approve).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Reject QA", command=self._qa_reject).pack(side="left", padx=(8, 0))
         self.qa_assignee_var = tk.StringVar(value=str(self.gui.db.get_setting("qa_reviewer_name", "reviewer")))
         self.qa_due_days_var = tk.StringVar(value="2")
         ttk.Entry(top, textvariable=self.qa_assignee_var, width=14).pack(side="left", padx=(8, 0))
         ttk.Entry(top, textvariable=self.qa_due_days_var, width=4).pack(side="left", padx=(4, 0))
-        ttk.Button(top, text="Assign selected", command=self._qa_assign_selected).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Assign all open", command=self._qa_assign_all_open).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Escalate overdue", command=self._qa_escalate_overdue).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Auto-assign rules", command=self._qa_auto_assign_rules).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Alert overdue", command=self._qa_alert_overdue).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Assign selected", command=self._qa_assign_selected).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Assign all open", command=self._qa_assign_all_open).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Escalate overdue", command=self._qa_escalate_overdue).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Auto-assign rules", command=self._qa_auto_assign_rules).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Alert overdue", command=self._qa_alert_overdue).pack(side="left", padx=(8, 0))
         ttk.Label(top, text="Seg mode").pack(side="left", padx=(12, 0))
         seg_combo = ttk.Combobox(top, textvariable=self.segment_mode_var, state="readonly", width=8, values=("auto", "legacy"))
         seg_combo.pack(side="left", padx=(4, 0))
@@ -545,7 +575,7 @@ class StudioSuiteWindow:
         seg_combo = ttk.Combobox(top, textvariable=self.segment_mode_var, state="readonly", width=8, values=("auto", "legacy"))
         seg_combo.pack(side="left", padx=(4, 0))
         seg_combo.bind("<<ComboboxSelected>>", lambda _: self._on_segment_mode_change())
-        ttk.Button(top, text="Load", command=self._load_editor).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Load", command=self._load_editor).pack(side="left", padx=(8, 0))
         self.ch_list = tk.Listbox(tab, width=46, height=12)
         self.ch_list.pack(fill="x", pady=(8, 0))
         self.ch_list.bind("<<ListboxSelect>>", lambda _: self._load_segments())
@@ -560,8 +590,8 @@ class StudioSuiteWindow:
         self.src_txt.configure(state="disabled")
         self.tgt_txt = ScrolledText(rf, font=("Consolas", 10)); self.tgt_txt.pack(fill="both", expand=True)
         btn = ttk.Frame(tab); btn.pack(fill="x", pady=(8, 0))
-        ttk.Button(btn, text="Save Segment", command=self._save_seg).pack(side="left")
-        ttk.Button(btn, text="Save EPUB", command=self._save_epub).pack(side="left", padx=(8, 0))
+        ui_button(btn, text="Save Segment", command=self._save_seg).pack(side="left")
+        ui_button(btn, text="Save EPUB", command=self._save_epub).pack(side="left", padx=(8, 0))
         ttk.Label(btn, text="Alt+Down/Alt+Up, Ctrl+S").pack(side="right")
         self._chapters: List[str] = []; self._src=[]; self._tgt=[]; self._root=None; self._ch=None
         self.win.bind("<Control-s>", lambda _: self._save_seg())
@@ -644,8 +674,8 @@ class StudioSuiteWindow:
         top = ttk.Frame(tab); top.pack(fill="x")
         ttk.Entry(top, textvariable=self.s_find, width=36).pack(side="left")
         ttk.Entry(top, textvariable=self.s_rep, width=36).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Preview", command=self._s_preview).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Apply", command=self._s_apply).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Preview", command=self._s_preview).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Apply", command=self._s_apply).pack(side="left", padx=(8, 0))
         self.s_list = tk.Listbox(tab); self.s_list.pack(fill="both", expand=True, pady=(8, 0))
 
     def _s_preview(self) -> None:
@@ -709,8 +739,8 @@ class StudioSuiteWindow:
         self.tm_q = tk.StringVar()
         top = ttk.Frame(tab); top.pack(fill="x")
         ttk.Entry(top, textvariable=self.tm_q).pack(side="left", fill="x", expand=True)
-        ttk.Button(top, text="Search", command=self._tm_refresh).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Delete selected", command=self._tm_delete).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Search", command=self._tm_refresh).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Delete selected", command=self._tm_delete).pack(side="left", padx=(8, 0))
         self.tm_list = tk.Listbox(tab); self.tm_list.pack(fill="both", expand=True, pady=(8, 0))
         self.tm_ids: List[int] = []
         self._tm_refresh()
@@ -743,8 +773,8 @@ class StudioSuiteWindow:
     def _build_snap_tab(self, nb: ttk.Notebook) -> None:
         tab = ttk.Frame(nb, padding=8); nb.add(tab, text=self.gui.tr("studio.tab.snapshots", "Snapshots"))
         top = ttk.Frame(tab); top.pack(fill="x")
-        ttk.Button(top, text="Create", command=self._snap_create).pack(side="left")
-        ttk.Button(top, text="Restore", command=self._snap_restore).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Create", command=self._snap_create).pack(side="left")
+        ui_button(top, text="Restore", command=self._snap_restore).pack(side="left", padx=(8, 0))
         self.snap_list = tk.Listbox(tab); self.snap_list.pack(fill="both", expand=True, pady=(8, 0))
         self._snap_refresh()
 
@@ -799,7 +829,7 @@ class StudioSuiteWindow:
         self.chk_epub = tk.StringVar(value=str(self._target() or ""))
         top = ttk.Frame(tab); top.pack(fill="x")
         ttk.Entry(top, textvariable=self.chk_epub).pack(side="left", fill="x", expand=True)
-        ttk.Button(top, text="Run epubcheck", command=self._run_chk).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Run epubcheck", command=self._run_chk).pack(side="left", padx=(8, 0))
         self.chk_log = ScrolledText(tab, font=("Consolas", 10)); self.chk_log.pack(fill="both", expand=True, pady=(8, 0))
 
     def _run_chk(self) -> None:
@@ -831,16 +861,16 @@ class StudioSuiteWindow:
         ttk.Entry(top, textvariable=self.ill_epub, width=40).pack(side="left")
         ttk.Entry(top, textvariable=self.ill_dir, width=40).pack(side="left", padx=(8, 0))
         ttk.Entry(top, textvariable=self.ill_tag, width=8).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Apply", command=self._ill_apply).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Apply", command=self._ill_apply).pack(side="left", padx=(8, 0))
         self.ill_log = tk.Listbox(tab); self.ill_log.pack(fill="both", expand=True, pady=(8, 0))
 
     def _ill_apply(self) -> None:
-        self.ill_log.insert("end", "MVP: użyj przycisków z panelu Uładnianie EPUB (wizard ilustracji jest next step).")
+        self.ill_log.insert("end", "MVP: uĹĽyj przyciskĂłw z panelu UĹ‚adnianie EPUB (wizard ilustracji jest next step).")
 
     def _build_pipeline_tab(self, nb: ttk.Notebook) -> None:
         tab = ttk.Frame(nb, padding=8); nb.add(tab, text=self.gui.tr("studio.tab.pipeline", "Pipeline"))
-        ttk.Label(tab, text="Queue translate -> edit z istniejącym auto-przejściem.").pack(anchor="w")
-        ttk.Button(tab, text="Queue current project", command=self._pipe_queue).pack(anchor="w", pady=(8, 0))
+        ttk.Label(tab, text="Queue translate -> edit z istniejÄ…cym auto-przejĹ›ciem.").pack(anchor="w")
+        ui_button(tab, text="Queue current project", command=self._pipe_queue).pack(anchor="w", pady=(8, 0))
 
     def _pipe_queue(self) -> None:
         if self.gui.current_project_id is None:
@@ -856,10 +886,10 @@ class StudioSuiteWindow:
         self.dbu_status_var = tk.StringVar(value="Status: idle")
         top = ttk.Frame(tab)
         top.pack(fill="x")
-        ttk.Button(top, text="Refresh status", command=self._dbu_refresh_status).pack(side="left")
-        ttk.Button(top, text="Run migrate", command=self._dbu_run_migrate).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Rollback last", command=self._dbu_rollback_last).pack(side="left", padx=(8, 0))
-        ttk.Button(top, text="Export report", command=self._dbu_export_report).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Refresh status", command=self._dbu_refresh_status).pack(side="left")
+        ui_button(top, text="Run migrate", command=self._dbu_run_migrate).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Rollback last", command=self._dbu_rollback_last).pack(side="left", padx=(8, 0))
+        ui_button(top, text="Export report", command=self._dbu_export_report).pack(side="left", padx=(8, 0))
 
         ttk.Label(tab, textvariable=self.dbu_status_var, style="Sub.TLabel").pack(anchor="w", pady=(8, 4))
         self.dbu_runs = tk.Listbox(tab, height=10)
@@ -1013,9 +1043,9 @@ class StudioSuiteWindow:
         tab = ttk.Frame(nb, padding=8); nb.add(tab, text=self.gui.tr("studio.tab.dashboard", "Dashboard"))
         bar = ttk.Frame(tab)
         bar.pack(fill="x")
-        ttk.Button(bar, text="Refresh", command=self._dash_refresh).pack(side="left")
-        ttk.Button(bar, text="Copy release notes", command=self._dash_copy_release_notes).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text="Save release notes", command=self._dash_save_release_notes).pack(side="left", padx=(8, 0))
+        ui_button(bar, text="Refresh", command=self._dash_refresh).pack(side="left")
+        ui_button(bar, text="Copy release notes", command=self._dash_copy_release_notes).pack(side="left", padx=(8, 0))
+        ui_button(bar, text="Save release notes", command=self._dash_save_release_notes).pack(side="left", padx=(8, 0))
         self.dash = ScrolledText(tab, font=("Consolas", 10)); self.dash.pack(fill="both", expand=True, pady=(8, 0))
         self._dash_refresh()
 
@@ -1248,12 +1278,12 @@ class StudioSuiteWindow:
     def _build_plugins_tab(self, nb: ttk.Notebook) -> None:
         tab = ttk.Frame(nb, padding=8); nb.add(tab, text=self.gui.tr("studio.tab.plugins", "Provider Plugins"))
         bar = ttk.Frame(tab); bar.pack(fill="x")
-        ttk.Button(bar, text="Refresh", command=self._plugins_refresh).pack(side="left")
-        ttk.Button(bar, text="Create template", command=self._plugins_template).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text="Rebuild manifest", command=self._plugins_rebuild_manifest).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text="Validate all", command=self._plugins_validate).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text="Health check selected", command=self._plugins_health_check).pack(side="left", padx=(8, 0))
-        ttk.Button(bar, text="Health check all (async)", command=self._plugins_health_check_all_async).pack(side="left", padx=(8, 0))
+        ui_button(bar, text="Refresh", command=self._plugins_refresh).pack(side="left")
+        ui_button(bar, text="Create template", command=self._plugins_template).pack(side="left", padx=(8, 0))
+        ui_button(bar, text="Rebuild manifest", command=self._plugins_rebuild_manifest).pack(side="left", padx=(8, 0))
+        ui_button(bar, text="Validate all", command=self._plugins_validate).pack(side="left", padx=(8, 0))
+        ui_button(bar, text="Health check selected", command=self._plugins_health_check).pack(side="left", padx=(8, 0))
+        ui_button(bar, text="Health check all (async)", command=self._plugins_health_check_all_async).pack(side="left", padx=(8, 0))
         self.pl_list = tk.Listbox(tab); self.pl_list.pack(fill="both", expand=True, pady=(8, 0))
         self.pl_log = ScrolledText(tab, height=8, font=("Consolas", 9)); self.pl_log.pack(fill="x")
         self._plugins_refresh()
@@ -1433,4 +1463,5 @@ class StudioSuiteWindow:
             "- script must match SHA-256 in providers/manifest.json\n"
             "Example: python providers/my_provider.py --health --model {model} --prompt-file {prompt_file}"
         )
+
 

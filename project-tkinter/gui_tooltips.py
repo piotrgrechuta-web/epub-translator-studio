@@ -31,11 +31,25 @@ class Tooltip:
     def _bind(self) -> None:
         if self._bound:
             return
-        self._bound = True
-        self.widget.bind("<Enter>", self._on_enter, add="+")
-        self.widget.bind("<Leave>", self._on_leave, add="+")
-        self.widget.bind("<ButtonPress>", self._on_leave, add="+")
-        self.widget.bind("<Destroy>", self._on_destroy, add="+")
+        bound_any = False
+        bound_any = self._bind_event("<Enter>", self._on_enter) or bound_any
+        bound_any = self._bind_event("<Leave>", self._on_leave) or bound_any
+        bound_any = self._bind_event("<ButtonPress>", self._on_leave) or bound_any
+        bound_any = self._bind_event("<Destroy>", self._on_destroy) or bound_any
+        self._bound = bound_any
+
+    def _bind_event(self, sequence: str, handler: Callable[[object], None]) -> bool:
+        try:
+            self.widget.bind(sequence, handler, add="+")
+            return True
+        except (TypeError, NotImplementedError):
+            try:
+                self.widget.bind(sequence, handler)
+                return True
+            except Exception:
+                return False
+        except Exception:
+            return False
 
     def _on_enter(self, _event: object = None) -> None:
         if not self._text():
@@ -108,5 +122,9 @@ def install_tooltips(root: tk.Misc, resolver: Callable[[tk.Misc], Optional[str]]
         except Exception:
             children = []
         stack.extend(children)
-        tips.append(Tooltip(w, lambda x=w: resolver(x) or ""))
+        try:
+            tips.append(Tooltip(w, lambda x=w: resolver(x) or ""))
+        except Exception:
+            # Some widgets do not support tkinter-compatible bind API.
+            continue
     return tips
