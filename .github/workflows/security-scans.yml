@@ -48,7 +48,7 @@ jobs:
           python project-tkinter/scripts/pip_audit_cve_gate.py pip-audit.json "${PIP_AUDIT_CVE_THRESHOLD}"
 
       - name: High/Critical vulnerability gate (Trivy)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           scan-type: fs
           scan-ref: .
