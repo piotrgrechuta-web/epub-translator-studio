@@ -64,7 +64,7 @@ jobs:
             "${EXTRA_ARGS[@]}"
 
       - name: Upload release notes artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-notes-draft
           path: artifacts/release_notes.md
